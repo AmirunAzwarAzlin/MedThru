@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Local database and backups -- contains patient data, never commit
+*.db
+*.db.bak
+*.db-journal
+
+# Logs
+*.log
+reader_out.log
+reader_err.log
+
+# Flutter / Dart
+app/.dart_tool/
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/windows/flutter/ephemeral/
+
+# IDE
+.vscode/
+.idea/
+
+# Environment secrets
+.env
+.env.*

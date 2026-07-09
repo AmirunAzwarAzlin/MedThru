@@ -1,0 +1,22 @@
+{
+  "name": "medthru",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "reader": "node reader.js",
+    "start": "node server.js",
+    "tap": "node simulate-tap.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "nfc-pcsc": "^0.8.1"
+  }
+}
