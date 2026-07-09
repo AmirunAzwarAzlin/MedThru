@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../readings.dart';
 import '../theme.dart';
+import '../trend_chart.dart';
 import '../widgets.dart';
 import 'edit_patient_screen.dart';
 import 'audit_screen.dart';
@@ -366,11 +367,16 @@ class _ReadingsTab extends StatelessWidget {
         }
         final all = snap.data ?? [];
 
-        // Latest value per type drives the summary tiles.
-        final latest = <String, Map<String, dynamic>>{};
-        for (final r in all) {
-          latest.putIfAbsent(r['reading_type'] as String, () => r);
-        }
+        // The API returns newest first; charts read left-to-right in time.
+        List<TrendPoint> pointsFor(String type) => all
+            .where((r) => r['reading_type'] == type)
+            .map((r) => (
+                  t: DateTime.parse(r['taken_at'] as String),
+                  v: (r['value'] as num).toDouble(),
+                ))
+            .toList()
+            .reversed
+            .toList();
 
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
@@ -380,8 +386,10 @@ class _ReadingsTab extends StatelessWidget {
               title: 'Readings',
               subtitle: 'Blood sugar, cholesterol and uric acid you log yourself.',
             ),
+            // Small multiples: one chart per measure. These share no y-scale
+            // (mmol/L vs umol/L), so they must never share an axis.
             for (final spec in readingTypes.values)
-              _LatestReadingCard(spec: spec, reading: latest[spec.key]),
+              _TrendCard(spec: spec, points: pointsFor(spec.key)),
             const SizedBox(height: 18),
             Text('HISTORY',
                 style: TextStyle(
@@ -419,80 +427,94 @@ class _ReadingsTab extends StatelessWidget {
   }
 }
 
-class _LatestReadingCard extends StatelessWidget {
-  const _LatestReadingCard({required this.spec, required this.reading});
+/// One measure: headline value plus its trend over time. The title names the
+/// series, so the chart needs no legend.
+class _TrendCard extends StatelessWidget {
+  const _TrendCard({required this.spec, required this.points});
   final ReadingType spec;
-  final Map<String, dynamic>? reading;
+  final List<TrendPoint> points;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final isDark = scheme.brightness == Brightness.dark;
-    final value = reading?['value'] as num?;
-    final within = value == null ? null : spec.withinTypical(value);
+    final latest = points.isEmpty ? null : points.last.v;
+    final within = latest == null ? null : spec.withinTypical(latest);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: scheme.outlineVariant),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(11),
-            decoration: BoxDecoration(
-              color: isDark ? spec.color.withValues(alpha: 0.18) : spec.tile,
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Icon(spec.icon,
-                color: isDark ? spec.tile : spec.color, size: 22),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: spec.tile(context),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(spec.icon, color: spec.color(context), size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(spec.label,
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15.5,
+                            color: scheme.onSurface)),
+                    const SizedBox(height: 2),
+                    Text(spec.typical,
+                        style: TextStyle(
+                            fontSize: 11.5, color: scheme.onSurfaceVariant)),
+                  ],
+                ),
+              ),
+              if (latest == null)
+                Text('—',
+                    style:
+                        TextStyle(fontSize: 20, color: scheme.onSurfaceVariant))
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    // Hero number: the value that matters, in ink not series colour.
+                    Text('${spec.format(latest)} ${spec.unit}',
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: scheme.onSurface)),
+                    if (within != null)
+                      Text(
+                        within ? 'within typical range' : 'outside typical range',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: within
+                              ? MedThruTheme.iconGreen
+                              : MedThruTheme.danger,
+                        ),
+                      ),
+                  ],
+                ),
+            ],
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(spec.label,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                        color: scheme.onSurface)),
-                const SizedBox(height: 2),
-                Text(spec.typical,
-                    style: TextStyle(
-                        fontSize: 11.5, color: scheme.onSurfaceVariant)),
-              ],
-            ),
-          ),
-          if (value == null)
-            Text('—',
-                style: TextStyle(
-                    fontSize: 20, color: scheme.onSurfaceVariant))
-          else
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text('${spec.format(value)} ${spec.unit}',
-                    style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: scheme.onSurface)),
-                if (within != null)
-                  Text(
-                    within ? 'within typical range' : 'outside typical range',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: within
-                          ? MedThruTheme.iconGreen
-                          : MedThruTheme.danger,
-                    ),
-                  ),
-              ],
-            ),
+          if (points.length >= 2) ...[
+            const SizedBox(height: 14),
+            TrendChart(points: points, spec: spec),
+          ] else if (points.length == 1) ...[
+            const SizedBox(height: 12),
+            Text('Log another reading to see a trend.',
+                style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
+          ],
         ],
       ),
     );
@@ -526,7 +548,7 @@ class _ReadingRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(spec?.icon ?? Icons.monitor_heart_outlined,
-              size: 18, color: spec?.color ?? scheme.primary),
+              size: 18, color: spec?.color(context) ?? scheme.primary),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
