@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../api.dart';
 import '../readings.dart';
 import '../theme.dart';
@@ -21,7 +21,7 @@ class PatientScreen extends StatefulWidget {
   final Map<String, dynamic> patient;
 
   /// Held in memory only, to prove card possession when writing readings.
-  /// Never rendered — the UI shows `card_preview` instead.
+  /// Never rendered â€” the UI shows `card_preview` instead.
   final String cardToken;
 
   @override
@@ -35,9 +35,13 @@ class _PatientScreenState extends State<PatientScreen>
   late Future<List<Map<String, dynamic>>> _readings;
   late final TabController _tabs;
 
-  // Tab indices, named so the FAB logic stays readable.
+  // Tab indices, named so the FAB and dashboard shortcuts stay readable.
+  static const _tabCarePlan = 1;
   static const _tabReadings = 2;
   static const _tabUpdates = 3;
+  static const _tabEmergency = 4;
+
+  bool _refreshing = false;
 
   @override
   void initState() {
@@ -60,15 +64,41 @@ class _PatientScreenState extends State<PatientScreen>
 
   void _loadNotes() {
     _notes = MedThruApi.instance.getNotes(_patient['id'] as int);
+    // Tabs build lazily, so a request can fail before its FutureBuilder has
+    // attached. ignore() marks the error handled without consuming it —
+    // the FutureBuilder still receives it and renders its error state.
+    _notes.ignore();
   }
 
   void _loadReadings() {
     _readings = MedThruApi.instance.getReadings(_patient['id'] as int);
+    _readings.ignore();
+  }
+
+  /// Re-fetch the record and its sub-collections from the server.
+  Future<void> _refresh() async {
+    setState(() => _refreshing = true);
+    try {
+      final fresh = await MedThruApi.instance.lookupByToken(widget.cardToken);
+      if (!mounted) return;
+      setState(() {
+        if (fresh != null) _patient = fresh;
+        _loadNotes();
+        _loadReadings();
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
   }
 
   String _val(String key) {
     final v = _patient[key];
-    return (v == null || (v is String && v.isEmpty)) ? '—' : v.toString();
+    return (v == null || (v is String && v.isEmpty)) ? 'â€”' : v.toString();
   }
 
   bool _has(String key) {
@@ -100,7 +130,7 @@ class _PatientScreenState extends State<PatientScreen>
         icon: const Icon(Icons.credit_card_off_outlined),
         title: const Text('Reissue card?'),
         content: Text(
-          'The current card (••••${_patient['card_preview'] ?? '????'}) will '
+          'The current card (â€¢â€¢â€¢â€¢${_patient['card_preview'] ?? '????'}) will '
           'stop working immediately. A new token will be issued for '
           '${_val('full_name')}.',
         ),
@@ -180,7 +210,15 @@ class _PatientScreenState extends State<PatientScreen>
     final isDoctor = MedThruApi.instance.isLoggedIn;
 
     final tabs = [
-      _OverviewTab(patient: _patient, val: _val, has: _has),
+      _HomeTab(
+        patient: _patient,
+        val: _val,
+        has: _has,
+        refreshing: _refreshing,
+        onRefresh: _refresh,
+        onAddReading: _addReading,
+        onOpenTab: (i) => _tabs.animateTo(i),
+      ),
       _CarePlanTab(val: _val),
       _ReadingsTab(readings: _readings),
       _UpdatesTab(notes: _notes),
@@ -222,7 +260,7 @@ class _PatientScreenState extends State<PatientScreen>
           unselectedLabelColor: Colors.white70,
           labelStyle: const TextStyle(fontWeight: FontWeight.w700),
           tabs: const [
-            Tab(icon: Icon(Icons.badge_outlined), text: 'Overview'),
+            Tab(icon: Icon(Icons.home_outlined), text: 'Home'),
             Tab(icon: Icon(Icons.event_outlined), text: 'Care plan'),
             Tab(icon: Icon(Icons.monitor_heart_outlined), text: 'Readings'),
             Tab(icon: Icon(Icons.timeline_outlined), text: 'Updates'),
@@ -266,29 +304,118 @@ class _PatientScreenState extends State<PatientScreen>
 
 // --- Tabs ---
 
-class _OverviewTab extends StatelessWidget {
-  const _OverviewTab({
+/// Patient dashboard: identity card, quick actions, primary CTA.
+class _HomeTab extends StatelessWidget {
+  const _HomeTab({
     required this.patient,
     required this.val,
     required this.has,
+    required this.refreshing,
+    required this.onRefresh,
+    required this.onAddReading,
+    required this.onOpenTab,
   });
+
   final Map<String, dynamic> patient;
   final String Function(String) val;
   final bool Function(String) has;
+  final bool refreshing;
+  final VoidCallback onRefresh;
+  final VoidCallback onAddReading;
+  final void Function(int) onOpenTab;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
       children: [
-        _CardHeader(name: val('full_name'), preview: val('card_preview')),
-        const SizedBox(height: 14),
+        _IdentityCard(
+          name: val('full_name'),
+          dob: val('date_of_birth'),
+          preview: val('card_preview'),
+          bloodType: val('blood_type'),
+          updatedAt: patient['updated_at'] as String?,
+          refreshing: refreshing,
+          onRefresh: onRefresh,
+        ),
+        const SizedBox(height: 10),
+        Center(
+          child: Text(
+            'Tap your card on a reader to refresh',
+            style: TextStyle(
+                fontSize: 12, color: scheme.onSurfaceVariant),
+          ),
+        ),
+        const SizedBox(height: 18),
         if (has('allergies'))
           _AllergyBanner(allergies: patient['allergies'] as String),
-        FieldCard(
-            label: 'Date of birth',
-            value: val('date_of_birth'),
-            icon: Icons.cake_outlined),
+
+        // Quick actions, two per row.
+        Row(
+          children: [
+            Expanded(
+              child: _ActionTile(
+                icon: Icons.emergency_outlined,
+                label: 'Emergency Info',
+                color: MedThruTheme.iconRed,
+                tile: MedThruTheme.tileRed,
+                onTap: () => onOpenTab(_PatientScreenState._tabEmergency),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _ActionTile(
+                icon: Icons.monitor_heart_outlined,
+                label: 'My Readings',
+                color: MedThruTheme.iconBlue,
+                tile: MedThruTheme.tileBlue,
+                onTap: () => onOpenTab(_PatientScreenState._tabReadings),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _ActionTile(
+                icon: Icons.event_outlined,
+                label: 'Care Plan',
+                color: MedThruTheme.iconGreen,
+                tile: MedThruTheme.tileGreen,
+                onTap: () => onOpenTab(_PatientScreenState._tabCarePlan),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _ActionTile(
+                icon: Icons.timeline_outlined,
+                label: 'Clinical Updates',
+                color: MedThruTheme.iconPurple,
+                tile: MedThruTheme.tilePurple,
+                onTap: () => onOpenTab(_PatientScreenState._tabUpdates),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        FilledButton.icon(
+          onPressed: onAddReading,
+          icon: const Icon(Icons.add),
+          label: const Text('Add a reading'),
+        ),
+
+        // The full medical fields still live here; the dashboard above is a
+        // shortcut layer, not a replacement for the record.
+        const SizedBox(height: 26),
+        Text('MEDICAL DETAILS',
+            style: TextStyle(
+                fontSize: 12,
+                letterSpacing: 1,
+                fontWeight: FontWeight.w700,
+                color: scheme.onSurfaceVariant)),
+        const SizedBox(height: 8),
         FieldCard(
             label: 'Blood type',
             value: val('blood_type'),
@@ -306,6 +433,210 @@ class _OverviewTab extends StatelessWidget {
             value: val('conditions'),
             icon: Icons.monitor_heart_outlined),
       ],
+    );
+  }
+}
+
+/// The hero card: who this is, and the one fact an emergency responder needs.
+class _IdentityCard extends StatelessWidget {
+  const _IdentityCard({
+    required this.name,
+    required this.dob,
+    required this.preview,
+    required this.bloodType,
+    required this.updatedAt,
+    required this.refreshing,
+    required this.onRefresh,
+  });
+
+  final String name, dob, preview, bloodType;
+  final String? updatedAt;
+  final bool refreshing;
+  final VoidCallback onRefresh;
+
+  String get _initial =>
+      (name.isNotEmpty && name != 'â€”') ? name[0].toUpperCase() : '?';
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [MedThruTheme.blue, Color(0xFF1C6FB8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: Colors.white.withValues(alpha: 0.25),
+                child: Text(_initial,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 2),
+                    Text(dob == 'â€”' ? 'Date of birth not set' : 'Born $dob',
+                        style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            fontSize: 12.5)),
+                  ],
+                ),
+              ),
+              if (refreshing)
+                const SizedBox(
+                  height: 16,
+                  width: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white),
+                )
+              else
+                InkWell(
+                  onTap: onRefresh,
+                  borderRadius: BorderRadius.circular(6),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    child: Text('Refresh',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.local_hospital_outlined,
+                size: 30, color: Colors.white),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            bloodType == 'â€”' ? 'Blood type unknown' : 'Blood Type  $bloodType',
+            style: const TextStyle(
+                color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 10),
+          Text('MED-IC CARD',
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 10,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          Text('â€¢â€¢â€¢â€¢ â€¢â€¢â€¢â€¢ $preview',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  letterSpacing: 2,
+                  fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          Text(
+            updatedAt == null ? '' : 'Updated ${_pretty(updatedAt!)}',
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.75), fontSize: 11.5),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _pretty(String sqlTimestamp) {
+    final t = DateTime.tryParse(sqlTimestamp);
+    if (t == null) return sqlTimestamp;
+    final hh = t.hour.toString().padLeft(2, '0');
+    final mm = t.minute.toString().padLeft(2, '0');
+    return '${longDate(t)}, $hh:$mm';
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  const _ActionTile({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.tile,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color tile;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = scheme.brightness == Brightness.dark;
+    return Material(
+      color: scheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          height: 124,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: scheme.outlineVariant),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: isDark ? color.withValues(alpha: 0.18) : tile,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon,
+                    color: isDark ? tile : color, size: 24),
+              ),
+              const SizedBox(height: 10),
+              // Long labels wrap to two lines; keep them from overflowing.
+              Flexible(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      height: 1.2,
+                      color: scheme.onSurface),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -479,7 +810,7 @@ class _TrendCard extends StatelessWidget {
                 ),
               ),
               if (latest == null)
-                Text('—',
+                Text('â€”',
                     style:
                         TextStyle(fontSize: 20, color: scheme.onSurfaceVariant))
               else
@@ -844,73 +1175,11 @@ class _NoteCard extends StatelessWidget {
           Text(note['body']?.toString() ?? '',
               style: const TextStyle(fontSize: 15, height: 1.4)),
           const SizedBox(height: 6),
-          Text('— $who',
+          Text('â€” $who',
               style: TextStyle(
                   fontSize: 12,
                   fontStyle: FontStyle.italic,
                   color: scheme.onSurfaceVariant)),
-        ],
-      ),
-    );
-  }
-}
-
-class _CardHeader extends StatelessWidget {
-  const _CardHeader({required this.name, required this.preview});
-  final String name;
-
-  /// Last four characters of the card token — never the token itself.
-  final String preview;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [MedThruTheme.navy, MedThruTheme.navyDeep],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 26,
-            backgroundColor: MedThruTheme.blue,
-            child: Text(
-              name.isNotEmpty && name != '—' ? name[0].toUpperCase() : '?',
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold)),
-                const SizedBox(height: 3),
-                Row(
-                  children: [
-                    const Icon(Icons.nfc, color: MedThruTheme.blue, size: 14),
-                    const SizedBox(width: 5),
-                    Text('Card ••••$preview',
-                        style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.7),
-                            fontSize: 13)),
-                  ],
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
