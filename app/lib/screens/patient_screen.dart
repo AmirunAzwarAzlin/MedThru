@@ -21,7 +21,7 @@ class PatientScreen extends StatefulWidget {
   final Map<String, dynamic> patient;
 
   /// Held in memory only, to prove card possession when writing readings.
-  /// Never rendered â€” the UI shows `card_preview` instead.
+  /// Never rendered — the UI shows `card_preview` instead.
   final String cardToken;
 
   @override
@@ -98,7 +98,7 @@ class _PatientScreenState extends State<PatientScreen>
 
   String _val(String key) {
     final v = _patient[key];
-    return (v == null || (v is String && v.isEmpty)) ? 'â€”' : v.toString();
+    return (v == null || (v is String && v.isEmpty)) ? '—' : v.toString();
   }
 
   bool _has(String key) {
@@ -130,7 +130,7 @@ class _PatientScreenState extends State<PatientScreen>
         icon: const Icon(Icons.credit_card_off_outlined),
         title: const Text('Reissue card?'),
         content: Text(
-          'The current card (â€¢â€¢â€¢â€¢${_patient['card_preview'] ?? '????'}) will '
+          'The current card (*******${_patient['card_preview'] ?? '????'}) will '
           'stop working immediately. A new token will be issued for '
           '${_val('full_name')}.',
         ),
@@ -455,7 +455,7 @@ class _IdentityCard extends StatelessWidget {
   final VoidCallback onRefresh;
 
   String get _initial =>
-      (name.isNotEmpty && name != 'â€”') ? name[0].toUpperCase() : '?';
+      (name.isNotEmpty && name != '—') ? name[0].toUpperCase() : '?';
 
   @override
   Widget build(BuildContext context) {
@@ -494,7 +494,7 @@ class _IdentityCard extends StatelessWidget {
                             fontSize: 17,
                             fontWeight: FontWeight.bold)),
                     const SizedBox(height: 2),
-                    Text(dob == 'â€”' ? 'Date of birth not set' : 'Born $dob',
+                    Text(dob == '—' ? 'Date of birth not set' : 'Born $dob',
                         style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.8),
                             fontSize: 12.5)),
@@ -535,7 +535,7 @@ class _IdentityCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            bloodType == 'â€”' ? 'Blood type unknown' : 'Blood Type  $bloodType',
+            bloodType == '—' ? 'Blood type unknown' : 'Blood Type  $bloodType',
             style: const TextStyle(
                 color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
           ),
@@ -547,7 +547,7 @@ class _IdentityCard extends StatelessWidget {
                   letterSpacing: 1.2,
                   fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
-          Text('â€¢â€¢â€¢â€¢ â€¢â€¢â€¢â€¢ $preview',
+          Text('******* $preview',
               style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
@@ -810,7 +810,7 @@ class _TrendCard extends StatelessWidget {
                 ),
               ),
               if (latest == null)
-                Text('â€”',
+                Text('—',
                     style:
                         TextStyle(fontSize: 20, color: scheme.onSurfaceVariant))
               else
@@ -1175,7 +1175,7 @@ class _NoteCard extends StatelessWidget {
           Text(note['body']?.toString() ?? '',
               style: const TextStyle(fontSize: 15, height: 1.4)),
           const SizedBox(height: 6),
-          Text('â€” $who',
+          Text('— $who',
               style: TextStyle(
                   fontSize: 12,
                   fontStyle: FontStyle.italic,
