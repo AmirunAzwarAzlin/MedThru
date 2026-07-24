@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node test/smoke.js",
     "reader": "node reader.js",
+    "write-card": "node write-card.js",
     "start": "node server.js",
     "tap": "node simulate-tap.js"
   },

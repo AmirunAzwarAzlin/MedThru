@@ -14,11 +14,43 @@ function verifyPassword(password, hash) {
 }
 
 function signDoctorToken(doctor) {
-  return jwt.sign({ sub: doctor.id, email: doctor.email }, JWT_SECRET, { expiresIn: '12h' });
+  return jwt.sign(
+    { sub: doctor.id, email: doctor.email, role: 'doctor' },
+    JWT_SECRET,
+    { expiresIn: '12h' },
+  );
 }
 
+// Rejects a patient token presented where a doctor is expected, even though
+// both are just JWTs signed with the same secret and could share a `sub`.
 function verifyDoctorToken(token) {
-  return jwt.verify(token, JWT_SECRET);
+  const payload = jwt.verify(token, JWT_SECRET);
+  if (payload.role !== 'doctor') throw new Error('Not a doctor token');
+  return payload;
 }
 
-module.exports = { hashPassword, verifyPassword, signDoctorToken, verifyDoctorToken };
+// A patient's alternative to presenting their card: phone + password, set up
+// once while the card is in hand. Scoped with role: 'patient' so it can never
+// be mistaken for a doctor token even if the ids collide.
+function signPatientToken(patient) {
+  return jwt.sign(
+    { sub: patient.id, role: 'patient' },
+    JWT_SECRET,
+    { expiresIn: '12h' },
+  );
+}
+
+function verifyPatientToken(token) {
+  const payload = jwt.verify(token, JWT_SECRET);
+  if (payload.role !== 'patient') throw new Error('Not a patient token');
+  return payload;
+}
+
+module.exports = {
+  hashPassword,
+  verifyPassword,
+  signDoctorToken,
+  verifyDoctorToken,
+  signPatientToken,
+  verifyPatientToken,
+};

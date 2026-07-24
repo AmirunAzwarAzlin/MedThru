@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:medthru_app/api.dart';
 import 'package:medthru_app/theme.dart';
-import 'package:medthru_app/screens/patient_screen.dart';
+import 'package:medthru_app/screens/patient/patient_screen.dart';
 
 final _patient = <String, dynamic>{
   'id': 1,

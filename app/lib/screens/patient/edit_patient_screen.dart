@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../api.dart';
-import '../widgets.dart';
+import '../../api.dart';
+import '../../widgets.dart';
 
 class EditPatientScreen extends StatefulWidget {
   const EditPatientScreen({

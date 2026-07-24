@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../api.dart';
-import '../widgets.dart';
+import '../../api.dart';
+import '../../widgets.dart';
 
 /// Note types shown to the doctor, mapped to the backend's enum values.
 const noteTypes = <String, ({String label, IconData icon})>{

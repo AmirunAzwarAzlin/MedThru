@@ -5,6 +5,41 @@ import 'readings.dart';
 /// One point on a trend line.
 typedef TrendPoint = ({DateTime t, double v});
 
+/// The spread of same-day readings collapsed into one [TrendPoint].
+typedef DailyBand = ({double lo, double hi, int count});
+
+/// Collapses same-day readings to one point per day (the day's mean), with
+/// [DailyBand] carrying the day's low/high so the chart can still show
+/// variability instead of hiding it entirely.
+///
+/// A doctor reviewing vitals logged up to several times a day cares about the
+/// trend, not every individual reading — but flattening straight to a mean
+/// would quietly discard how much a day varied, so the band travels with it.
+({List<TrendPoint> points, List<DailyBand> bands}) aggregateDaily(
+  List<TrendPoint> points,
+) {
+  if (points.isEmpty) return (points: <TrendPoint>[], bands: <DailyBand>[]);
+  final byDay = <DateTime, List<double>>{};
+  for (final p in points) {
+    final day = DateTime(p.t.year, p.t.month, p.t.day);
+    byDay.putIfAbsent(day, () => []).add(p.v);
+  }
+  final days = byDay.keys.toList()..sort();
+  final outPoints = <TrendPoint>[];
+  final outBands = <DailyBand>[];
+  for (final d in days) {
+    final vals = byDay[d]!;
+    final avg = vals.reduce((a, b) => a + b) / vals.length;
+    outPoints.add((t: d, v: avg));
+    outBands.add((
+      lo: vals.reduce(math.min),
+      hi: vals.reduce(math.max),
+      count: vals.length,
+    ));
+  }
+  return (points: outPoints, bands: outBands);
+}
+
 const _months = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -26,11 +61,16 @@ class TrendChart extends StatefulWidget {
     super.key,
     required this.points,
     required this.spec,
+    this.band,
     this.height = 180,
   });
 
   final List<TrendPoint> points;
   final ReadingType spec;
+
+  /// Per-point day-range shading (same length as [points]). Null when the
+  /// line already shows every raw reading, so there is no spread to show.
+  final List<DailyBand>? band;
   final double height;
 
   @override
@@ -53,6 +93,7 @@ class _TrendChartState extends State<TrendChart> {
           final geom = _Geometry(
             size: size,
             points: widget.points,
+            band: widget.band,
             spec: widget.spec,
           );
 
@@ -73,6 +114,7 @@ class _TrendChartState extends State<TrendChart> {
                 painter: _TrendPainter(
                   geom: geom,
                   spec: widget.spec,
+                  band: widget.band,
                   seriesColor: color,
                   selected: _selected,
                   gridColor: scheme.outlineVariant,
@@ -94,7 +136,12 @@ class _TrendChartState extends State<TrendChart> {
 
 /// Maps data space to pixels. Kept separate so hit-testing and painting agree.
 class _Geometry {
-  _Geometry({required this.size, required this.points, required this.spec}) {
+  _Geometry({
+    required this.size,
+    required this.points,
+    required this.spec,
+    this.band,
+  }) {
     const padLeft = 46.0, padRight = 14.0, padTop = 14.0, padBottom = 28.0;
     plot = Rect.fromLTRB(
       padLeft,
@@ -103,8 +150,14 @@ class _Geometry {
       size.height - padBottom,
     );
 
-    final dataLo = points.map((p) => p.v).reduce(math.min);
-    final dataHi = points.map((p) => p.v).reduce(math.max);
+    final dataLo = math.min(
+      points.map((p) => p.v).reduce(math.min),
+      band == null ? double.infinity : band!.map((b) => b.lo).reduce(math.min),
+    );
+    final dataHi = math.max(
+      points.map((p) => p.v).reduce(math.max),
+      band == null ? double.negativeInfinity : band!.map((b) => b.hi).reduce(math.max),
+    );
 
     // Pull a reference bound into view only when it is near the data. Forcing
     // the whole band into the domain (uric acid: band 200-430 vs data 383-466)
@@ -141,6 +194,7 @@ class _Geometry {
   final Size size;
   final List<TrendPoint> points;
   final ReadingType spec;
+  final List<DailyBand>? band;
 
   late final Rect plot;
   late final double minY, maxY, minX, maxX;
@@ -196,6 +250,7 @@ class _TrendPainter extends CustomPainter {
   _TrendPainter({
     required this.geom,
     required this.spec,
+    this.band,
     required this.seriesColor,
     required this.selected,
     required this.gridColor,
@@ -209,6 +264,7 @@ class _TrendPainter extends CustomPainter {
 
   final _Geometry geom;
   final ReadingType spec;
+  final List<DailyBand>? band;
   final Color seriesColor;
   final int? selected;
   final Color gridColor, axisTextColor, inkColor, surfaceColor, bandColor;
@@ -217,6 +273,7 @@ class _TrendPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     _paintReferenceBand(canvas);
+    _paintVariabilityBand(canvas);
     _paintGridAndAxis(canvas);
 
     // Series line: 2px, rounded joins.
@@ -275,6 +332,27 @@ class _TrendPainter extends CustomPainter {
     // Deliberately unlabelled -- the card header states the range in words,
     // and an in-chart label collides with the direct label on the last point.
     canvas.drawRect(rect, Paint()..color = bandColor);
+  }
+
+  /// Shades each day's low-high spread around its averaged point, so
+  /// collapsing several readings to one dot doesn't hide how much they
+  /// varied. Drawn as one filled band across the top edges, then back along
+  /// the bottom edges, rather than a rectangle per day, so it reads as a
+  /// continuous ribbon like the reference range does.
+  void _paintVariabilityBand(Canvas canvas) {
+    final b = band;
+    if (b == null || b.length != geom.points.length || b.length < 2) return;
+    // Trace the top (highs) left-to-right, then the bottom (lows) back
+    // right-to-left, so the fill traces one continuous ribbon outline.
+    final ribbon = Path()..moveTo(geom.xFor(0), geom.yFor(b[0].hi));
+    for (var i = 1; i < b.length; i++) {
+      ribbon.lineTo(geom.xFor(i), geom.yFor(b[i].hi));
+    }
+    for (var i = b.length - 1; i >= 0; i--) {
+      ribbon.lineTo(geom.xFor(i), geom.yFor(b[i].lo));
+    }
+    ribbon.close();
+    canvas.drawPath(ribbon, Paint()..color = seriesColor.withValues(alpha: 0.12));
   }
 
   void _paintGridAndAxis(Canvas canvas) {
@@ -352,17 +430,30 @@ class _TrendPainter extends CustomPainter {
     _marker(canvas, p, 5);
 
     final pt = geom.points[i];
+    final dayBand = (band != null && i < band!.length) ? band![i] : null;
     final value = _text(
-      '${spec.format(pt.v)} ${spec.unit}',
+      dayBand == null
+          ? '${spec.format(pt.v)} ${spec.unit}'
+          : '${spec.format(pt.v)} ${spec.unit} avg',
       tooltipInk,
       11.5,
       bold: true,
     );
     final date = _text(longDate(pt.t), tooltipInk.withValues(alpha: 0.75), 10);
+    final range = dayBand == null || dayBand.count < 2
+        ? null
+        : _text(
+            '${spec.format(dayBand.lo)}–${spec.format(dayBand.hi)} '
+            '· ${dayBand.count} readings',
+            tooltipInk.withValues(alpha: 0.75),
+            10,
+          );
 
     const padH = 8.0, padV = 6.0, gap = 2.0;
-    final w = math.max(value.width, date.width) + padH * 2;
-    final h = value.height + date.height + gap + padV * 2;
+    final w = [value.width, date.width, range?.width ?? 0]
+            .reduce(math.max) +
+        padH * 2;
+    final h = value.height + date.height + (range?.height ?? -gap) + gap * 2 + padV * 2;
 
     var left = p.dx + 12;
     if (left + w > geom.plot.right) left = p.dx - w - 12;
@@ -375,8 +466,14 @@ class _TrendPainter extends CustomPainter {
       const Radius.circular(8),
     );
     canvas.drawRRect(rect, Paint()..color = tooltipBg);
-    value.paint(canvas, Offset(left + padH, top + padV));
-    date.paint(canvas, Offset(left + padH, top + padV + value.height + gap));
+    var y = top + padV;
+    value.paint(canvas, Offset(left + padH, y));
+    y += value.height + gap;
+    date.paint(canvas, Offset(left + padH, y));
+    if (range != null) {
+      y += date.height + gap;
+      range.paint(canvas, Offset(left + padH, y));
+    }
   }
 
   TextPainter _text(String s, Color c, double size, {bool bold = false}) {

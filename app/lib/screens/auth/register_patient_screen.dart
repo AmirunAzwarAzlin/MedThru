@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import '../api.dart';
-import '../widgets.dart';
-import 'patient_screen.dart';
+import '../../api.dart';
+import '../../widgets.dart';
+import '../patient/patient_screen.dart';
 
 /// Doctor-only: create a new patient record and bind it to a card token.
 /// The token here will eventually be filled by tapping a blank card on the

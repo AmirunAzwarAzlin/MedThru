@@ -10,25 +10,26 @@ void main() {
   tearDown(() => MedThruApi.instance.debugSetSession());
 
   testWidgets('Landing page renders when signed out', (tester) async {
-    await tester.pumpWidget(const MedThruApp());
+    await tester.pumpWidget(const MedThruApp(enableTapListening: false, enableNotifications: false));
 
     expect(find.textContaining('readable in a tap'), findsOneWidget);
     expect(find.text('Why Med-IC'), findsOneWidget);
     expect(find.text('How it works'), findsOneWidget);
-    expect(find.text('Read a card'), findsOneWidget);
 
     // Signed out: sign-in offered, no doctor tools, no logout.
     expect(find.text('Doctor sign in'), findsOneWidget);
     expect(find.byIcon(Icons.logout), findsNothing);
-    expect(find.text('Register new patient'), findsNothing);
+    expect(find.text('Register patient'), findsNothing);
   });
 
   // Regression test: the home screen must rebuild when auth state changes.
   // It previously did not, because main.dart returned a `const HomeScreen()`
   // from an AnimatedBuilder, which Flutter skips re-rendering.
   testWidgets('Home reacts to sign in and sign out', (tester) async {
-    await tester.pumpWidget(const MedThruApp());
-    expect(find.byIcon(Icons.logout), findsNothing);
+    await tester.pumpWidget(const MedThruApp(enableTapListening: false, enableNotifications: false));
+    // Signed out: no doctor navigation, sign-in offered.
+    expect(find.byIcon(Icons.people_outline), findsNothing);
+    expect(find.text('Doctor sign in'), findsOneWidget);
 
     // Simulate signing in.
     MedThruApi.instance.debugSetSession(
@@ -37,16 +38,24 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byIcon(Icons.logout), findsOneWidget);
-    expect(find.text('Signed in as Dr. Test'), findsOneWidget);
-    expect(find.text('Register new patient'), findsOneWidget);
+    // Signed in: a doctor now lands on the dashboard, with the practice
+    // navigation and account menu in the app bar. The dashboard body loads
+    // over the network, so we assert on this chrome rather than its contents.
+    expect(find.byIcon(Icons.people_outline), findsOneWidget); // Patients
+    expect(find.byIcon(Icons.event_note_outlined), findsOneWidget); // Requests
+    expect(find.byIcon(Icons.account_circle_outlined), findsOneWidget); // Account
     expect(find.text('Doctor sign in'), findsNothing);
 
-    // Tapping logout returns the page to its signed-out state.
-    await tester.tap(find.byIcon(Icons.logout));
+    // Signing out via the account menu returns the page to its signed-out
+    // state. (Timed pumps, not pumpAndSettle: the loading dashboard shows an
+    // indeterminate spinner that never settles.)
+    await tester.tap(find.byIcon(Icons.account_circle_outlined));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Sign out'));
     await tester.pump();
 
-    expect(find.byIcon(Icons.logout), findsNothing);
+    expect(find.byIcon(Icons.people_outline), findsNothing);
     expect(find.text('Doctor sign in'), findsOneWidget);
   });
 }

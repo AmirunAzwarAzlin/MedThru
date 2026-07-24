@@ -12,6 +12,11 @@ start "MedThru Server" cmd /k "node server.js"
 REM Give the server a couple of seconds to come up before opening the app.
 timeout /t 3 /nobreak >nul
 
+echo Starting the NFC reader bridge...
+REM Watches the ACR122U and forwards card taps to the server. Harmless if no
+REM reader is plugged in yet — it just waits.
+start "MedThru NFC Reader" cmd /k "node reader.js"
+
 echo Opening the MedThru app...
 start "" "%~dp0app\build\windows\x64\runner\Debug\medthru_app.exe"
 

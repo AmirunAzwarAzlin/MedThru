@@ -33,6 +33,9 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Comparison images flutter_test writes when a golden test fails
+test/failures/
+
 # Symbolication related
 app.*.symbols
 

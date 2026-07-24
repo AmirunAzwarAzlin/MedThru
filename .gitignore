@@ -25,3 +25,6 @@ app/windows/flutter/ephemeral/
 # Environment secrets
 .env
 .env.*
+
+# Uploaded documents (runtime data)
+uploads/

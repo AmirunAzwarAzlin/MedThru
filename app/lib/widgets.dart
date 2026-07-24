@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'theme.dart';
 
 /// Shows a freshly issued card token. This is the only time the raw token is
 /// ever visible — the server stores just a hash — so it must be written to the
@@ -81,6 +82,83 @@ Future<void> showCardTokenDialog(
       );
     },
   );
+}
+
+/// How an appointment status should read and colour across the app, so the
+/// patient's list, the doctor's queue and confirmation snackbars all agree.
+class AppointmentStatusStyle {
+  const AppointmentStatusStyle(this.label, this.color, this.icon);
+  final String label;
+  final Color color;
+  final IconData icon;
+
+  static AppointmentStatusStyle of(String status) {
+    switch (status) {
+      case 'requested':
+        return const AppointmentStatusStyle(
+            'Awaiting approval', Color(0xFFB88407), Icons.hourglass_top);
+      case 'confirmed':
+        return const AppointmentStatusStyle(
+            'Confirmed', Color(0xFF19A05B), Icons.check_circle_outline);
+      case 'completed':
+        return const AppointmentStatusStyle(
+            'Completed', Color(0xFF1D7FD4), Icons.event_available_outlined);
+      case 'rejected':
+        return const AppointmentStatusStyle(
+            'Rejected', Color(0xFFE0384E), Icons.cancel_outlined);
+      case 'cancelled':
+        return const AppointmentStatusStyle(
+            'Cancelled', Color(0xFF5B6B7F), Icons.event_busy_outlined);
+      default:
+        return AppointmentStatusStyle(status, const Color(0xFF5B6B7F), Icons.event);
+    }
+  }
+}
+
+/// A small coloured status pill.
+class StatusPill extends StatelessWidget {
+  const StatusPill({super.key, required this.status});
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppointmentStatusStyle.of(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: s.color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(s.icon, size: 14, color: s.color),
+          const SizedBox(width: 5),
+          Text(s.label,
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w700, color: s.color)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Formats a stored "YYYY-MM-DD HH:MM" wall-clock string for display, e.g.
+/// "Mon 14 Jul 2026, 8:20 AM". Returns the raw value if it can't be parsed.
+String formatAppointmentTime(String startsAt) {
+  final parsed = DateTime.tryParse(startsAt.replaceFirst(' ', 'T'));
+  if (parsed == null) return startsAt;
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  final h24 = parsed.hour;
+  final h12 = h24 % 12 == 0 ? 12 : h24 % 12;
+  final ampm = h24 < 12 ? 'AM' : 'PM';
+  final min = parsed.minute.toString().padLeft(2, '0');
+  return '${days[parsed.weekday - 1]} ${parsed.day} ${months[parsed.month - 1]} '
+      '${parsed.year}, $h12:$min $ampm';
 }
 
 /// A labelled read-only field shown on the patient record.
@@ -168,6 +246,264 @@ class CenteredMessage extends StatelessWidget {
               action!,
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A colored icon tile for a grid of quick actions — the patient Home tab's
+/// visual language (Emergency Info, Health Records, ...), shared here so the
+/// doctor/admin side of the app can use the same look for its own actions.
+class ActionTile extends StatelessWidget {
+  const ActionTile({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.tile,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color tile;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = scheme.brightness == Brightness.dark;
+    return Material(
+      color: scheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          height: 124,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: scheme.outlineVariant),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: isDark ? color.withValues(alpha: 0.18) : tile,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: isDark ? tile : color, size: 24),
+              ),
+              const SizedBox(height: 10),
+              // Long labels wrap to two lines; keep them from overflowing.
+              Flexible(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    height: 1.2,
+                    color: scheme.onSurface,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The "who is this" hero header shared by the patient and doctor
+/// profile-style screens, so both sides of the app read as one design.
+/// A calm dark card with a faint green top-glow and a green-ringed avatar —
+/// the quiet resting surface of the "quiet dark" direction. [child], if given,
+/// renders below the name/subtitle row — e.g. the patient's blood-type stat,
+/// or a doctor's admin badge.
+class GradientHeroCard extends StatelessWidget {
+  const GradientHeroCard({
+    super.key,
+    required this.name,
+    required this.subtitle,
+    this.trailing,
+    this.child,
+  });
+
+  final String name;
+  final String subtitle;
+  final Widget? trailing;
+  final Widget? child;
+
+  String get _initial => name.isNotEmpty ? name[0].toUpperCase() : '?';
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
+      decoration: BoxDecoration(
+        // A soft green halo at the top fades into the card surface — presence
+        // without shouting.
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color.alphaBlend(
+                MedThruTheme.blue.withValues(alpha: 0.16), scheme.surfaceContainerLow),
+            scheme.surfaceContainerLow,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(2.5),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: MedThruTheme.blue.withValues(alpha: 0.6), width: 2),
+                ),
+                child: CircleAvatar(
+                  radius: 22,
+                  backgroundColor: MedThruTheme.blue.withValues(alpha: 0.18),
+                  child: Text(
+                    _initial,
+                    style: const TextStyle(
+                      color: MedThruTheme.blueBright,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: TextStyle(
+                        color: scheme.onSurface,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (trailing != null) trailing!,
+            ],
+          ),
+          if (child != null) ...[
+            const SizedBox(height: 18),
+            child!,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// The signature element: an emergency-call band, modelled on the reference
+/// design's red action bar. A muted brick-red gradient carrying a single
+/// bright-red circular badge and a forward chevron — the one loud thing on an
+/// otherwise quiet screen. Tapping it jumps to the emergency essentials.
+class EmergencyBand extends StatelessWidget {
+  const EmergencyBand({
+    super.key,
+    required this.onTap,
+    this.label = 'Emergency info',
+    this.sublabel = 'Blood type, allergies & contacts',
+  });
+
+  final VoidCallback onTap;
+  final String label;
+  final String sublabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [MedThruTheme.bandRed1, MedThruTheme.bandRed2],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: MedThruTheme.danger.withValues(alpha: 0.45)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                height: 44,
+                width: 44,
+                decoration: const BoxDecoration(
+                  color: MedThruTheme.danger,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.emergency_share_outlined,
+                    color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      sublabel,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.78),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: Colors.white70),
+            ],
+          ),
         ),
       ),
     );

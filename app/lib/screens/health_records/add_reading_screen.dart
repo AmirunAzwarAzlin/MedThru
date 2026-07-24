@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../api.dart';
-import '../readings.dart';
-import '../widgets.dart';
+import '../../api.dart';
+import '../../readings.dart';
+import '../../widgets.dart';
 
 /// Log a self-measured reading. Open to patients (card possession is the
 /// credential) — unlike the clinical record, which stays doctor-only.
@@ -11,10 +11,16 @@ class AddReadingScreen extends StatefulWidget {
     super.key,
     required this.token,
     this.initialType = 'blood_sugar',
+    this.category,
   });
 
   final String token;
   final String initialType;
+
+  /// Restricts the type picker to one Health Records section (vitals or
+  /// anthropometry). Null shows every type, for the general "Add reading"
+  /// entry point.
+  final ReadingCategory? category;
 
   @override
   State<AddReadingScreen> createState() => _AddReadingScreenState();
@@ -22,6 +28,10 @@ class AddReadingScreen extends StatefulWidget {
 
 class _AddReadingScreenState extends State<AddReadingScreen> {
   late String _type = widget.initialType;
+
+  Iterable<ReadingType> get _types => widget.category == null
+      ? readingTypes.values
+      : readingTypes.values.where((t) => t.category == widget.category);
   final _value = TextEditingController();
   final _note = TextEditingController();
   bool _saving = false;
@@ -76,7 +86,7 @@ class _AddReadingScreenState extends State<AddReadingScreen> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final t in readingTypes.values)
+                for (final t in _types)
                   ChoiceChip(
                     label: Text(t.label),
                     avatar: Icon(t.icon, size: 18),

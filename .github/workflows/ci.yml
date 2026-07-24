@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # Deliberately not `npm ci`: nfc-pcsc is a native module for the
+      # physical card reader, which needs no CI coverage and isn't
+      # guaranteed to build on a bare runner. server.js and db.js only need
+      # these three (db.js's SQLite access is node:sqlite, built in).
+      - name: Install runtime dependencies
+        run: npm install --no-save express jsonwebtoken bcryptjs
+
+      - name: Syntax check
+        run: |
+          for f in server.js db.js auth.js tokens.js ratelimit.js appointments.js lookup.js; do
+            node -c "$f"
+          done
+
+      - name: Smoke test
+        run: npm test
+
+  flutter:
+    name: Flutter app
+    # Matches the platform the committed golden images were generated on —
+    # font rendering differs enough across OSes that running these on Linux
+    # would fail the golden comparisons for reasons unrelated to the code.
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test

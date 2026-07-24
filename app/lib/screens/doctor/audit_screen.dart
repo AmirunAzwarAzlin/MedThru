@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../api.dart';
-import '../widgets.dart';
+import '../../api.dart';
+import '../../widgets.dart';
 
 /// Doctor-only: full access history for a patient (every read and edit,
 /// who did it and when).
