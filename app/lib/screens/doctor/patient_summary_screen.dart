@@ -5,6 +5,7 @@ import '../../readings.dart';
 import '../../theme.dart';
 import '../../widgets.dart';
 import '../patient/add_note_screen.dart';
+import '../messages/conversation_screen.dart';
 import 'audit_screen.dart';
 import '../health_records/health_record_list_screen.dart';
 import '../health_records/vitals_record_screen.dart';
@@ -312,6 +313,24 @@ class _PatientSummaryScreenState extends State<PatientSummaryScreen> {
                       onPressed: () => exportPatientSummary(context, p),
                       icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
                       label: const Text('Export summary'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ConversationScreen(
+                            patientId: widget.patientId,
+                            title: 'Messages · ${widget.patientName}',
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(Icons.forum_outlined, size: 18),
+                      label: const Text('Messages'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => exportPrescription(context, p),
+                      icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                      label: const Text('Prescription'),
                     ),
                     if (MedThruApi.instance.isAdmin) ...[
                       OutlinedButton.icon(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../api.dart';
 import '../../health_record_widgets.dart';
 import '../../theme.dart';
+import '../../trend_chart.dart' show Sparkline;
 import '../../widgets.dart';
 import 'add_allergy_screen.dart';
 import 'add_medication_screen.dart';
@@ -22,6 +23,7 @@ class HealthRecordCategoryConfig {
     required this.addScreenBuilder,
     required this.editScreenBuilder,
     required this.delete,
+    this.headerBuilder,
   });
 
   final String title;
@@ -31,6 +33,9 @@ class HealthRecordCategoryConfig {
   final Widget Function(String cardToken) addScreenBuilder;
   final Widget Function(String cardToken, Map<String, dynamic> row) editScreenBuilder;
   final Future<void> Function(String cardToken, int id) delete;
+
+  /// Optional summary shown above the list, given the fetched rows.
+  final Widget Function(List<Map<String, dynamic>> rows)? headerBuilder;
 }
 
 final allergyRecordConfig = HealthRecordCategoryConfig(
@@ -81,6 +86,7 @@ final labResultRecordConfig = HealthRecordCategoryConfig(
   addScreenBuilder: (token) => AddLabResultScreen(token: token),
   editScreenBuilder: (token, row) => AddLabResultScreen(token: token, existing: row),
   delete: (token, id) => MedThruApi.instance.deleteLabResult(token, id),
+  headerBuilder: (rows) => LabTrends(rows: rows),
 );
 
 final emergencyContactRecordConfig = HealthRecordCategoryConfig(
@@ -92,6 +98,128 @@ final emergencyContactRecordConfig = HealthRecordCategoryConfig(
   editScreenBuilder: (token, row) => AddEmergencyContactScreen(token: token, existing: row),
   delete: (token, id) => MedThruApi.instance.deleteEmergencyContact(token, id),
 );
+
+/// The first number in a free-text field like "6.1 %" or "4.0–5.6", or null.
+double? _firstNumber(String? s) {
+  if (s == null) return null;
+  final m = RegExp(r'-?\d+(\.\d+)?').firstMatch(s);
+  return m == null ? null : double.tryParse(m.group(0)!);
+}
+
+/// Low/high parsed from a reference range like "4.0–5.6" (its first two
+/// numbers), or (null, null) when it isn't a two-number range.
+(double?, double?) _parseRange(String? s) {
+  if (s == null) return (null, null);
+  final nums = RegExp(r'-?\d+(\.\d+)?')
+      .allMatches(s)
+      .map((m) => double.parse(m.group(0)!))
+      .toList();
+  return nums.length >= 2 ? (nums[0], nums[1]) : (null, null);
+}
+
+/// A trends summary above the lab list: one sparkline per test that has at
+/// least two numeric results, so a value's direction over time is visible
+/// without opening each entry. Tests with non-numeric or single results are
+/// simply left out.
+class LabTrends extends StatelessWidget {
+  const LabTrends({super.key, required this.rows});
+  final List<Map<String, dynamic>> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    // Group by test name (case-insensitive), keeping the recorded casing.
+    final groups = <String, List<Map<String, dynamic>>>{};
+    final display = <String, String>{};
+    for (final r in rows) {
+      final name = (r['test_name'] as String?)?.trim() ?? '';
+      if (name.isEmpty) continue;
+      final key = name.toLowerCase();
+      groups.putIfAbsent(key, () => []).add(r);
+      display.putIfAbsent(key, () => name);
+    }
+
+    final cards = <Widget>[];
+    for (final entry in groups.entries) {
+      // rows arrive newest-first; reverse for an oldest-to-newest series.
+      final series = <double>[];
+      for (final r in entry.value.reversed) {
+        final n = _firstNumber(r['value'] as String?);
+        if (n != null) series.add(n);
+      }
+      if (series.length < 2) continue;
+      cards.add(_LabTrendCard(name: display[entry.key]!, latest: entry.value.first, series: series));
+    }
+    if (cards.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('TRENDS',
+            style: TextStyle(
+              fontSize: 11,
+              letterSpacing: 1,
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurfaceVariant,
+            )),
+        const SizedBox(height: 8),
+        ...cards,
+        const SizedBox(height: 18),
+      ],
+    );
+  }
+}
+
+class _LabTrendCard extends StatelessWidget {
+  const _LabTrendCard({required this.name, required this.latest, required this.series});
+  final String name;
+  final Map<String, dynamic> latest;
+  final List<double> series;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final unit = latest['unit'] as String?;
+    final value = latest['value'] as String?;
+    final color = labStatusColor(latest['status'] as String?);
+    final (low, high) = _parseRange(latest['reference_range'] as String?);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                const SizedBox(height: 2),
+                Text(
+                  [
+                    if (value != null && value.isNotEmpty) value,
+                    if (unit != null && unit.isNotEmpty) unit,
+                  ].join(' '),
+                  style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Sparkline(values: series, color: color, low: low, high: high, width: 110, height: 34),
+        ],
+      ),
+    );
+  }
+}
 
 /// A dedicated page for one Health Records category: its list, a FAB to add
 /// another entry, tap-to-edit on any row, and swipe-to-delete. Reused for
@@ -248,6 +376,7 @@ class _HealthRecordListScreenState extends State<HealthRecordListScreen> {
           future: _future,
           itemBuilder: _rowBuilder,
           emptyLabel: widget.config.emptyLabel,
+          headerBuilder: widget.config.headerBuilder,
         ),
       ),
       floatingActionButton: readOnly

@@ -246,6 +246,132 @@ class _Geometry {
   }
 }
 
+/// A tiny, axis-free line of one metric's recent values — its trend at a glance
+/// for a dashboard chip. One series, one hue, no legend or axis labels: the chip
+/// names the metric and shows the current number, so the sparkline only has to
+/// carry the shape. Matches [TrendChart]'s marks (2px round line, a recessive
+/// typical-range band, a surface-ringed end marker).
+class Sparkline extends StatelessWidget {
+  const Sparkline({
+    super.key,
+    required this.values,
+    required this.color,
+    this.low,
+    this.high,
+    this.width = 92,
+    this.height = 26,
+  });
+
+  /// The metric's values oldest-to-newest. Needs at least two to draw a line.
+  final List<double> values;
+  final Color color;
+
+  /// Optional typical-range bounds, shaded as a recessive band when both are
+  /// set and sit near the data.
+  final double? low, high;
+  final double width, height;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: width,
+      height: height,
+      child: CustomPaint(
+        painter: _SparklinePainter(
+          values: values,
+          color: color,
+          low: low,
+          high: high,
+          bandColor: scheme.onSurfaceVariant.withValues(alpha: 0.13),
+          surfaceColor: scheme.surfaceContainerLow,
+        ),
+      ),
+    );
+  }
+}
+
+class _SparklinePainter extends CustomPainter {
+  _SparklinePainter({
+    required this.values,
+    required this.color,
+    required this.low,
+    required this.high,
+    required this.bandColor,
+    required this.surfaceColor,
+  });
+
+  final List<double> values;
+  final Color color;
+  final double? low, high;
+  final Color bandColor, surfaceColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.isEmpty) return;
+    const inset = 3.0;
+    final rect = Rect.fromLTRB(inset, inset, size.width - inset, size.height - inset);
+
+    var lo = values.reduce(math.min);
+    var hi = values.reduce(math.max);
+    // Pull a reference bound into view only when it sits near the data — the
+    // same restraint as the full TrendChart, so a distant bound never squashes
+    // the line into a sliver.
+    final dataSpan = hi - lo;
+    final slack = dataSpan == 0 ? (hi.abs() * 0.2 + 1) : dataSpan * 0.5;
+    bool near(double v) => v >= lo - slack && v <= hi + slack;
+    if (low != null && near(low!)) lo = math.min(lo, low!);
+    if (high != null && near(high!)) hi = math.max(hi, high!);
+
+    final span = hi - lo;
+    final pad = span == 0 ? (hi.abs() * 0.1 + 1) : span * 0.15;
+    lo -= pad;
+    hi += pad;
+
+    double xFor(int i) => values.length == 1
+        ? rect.center.dx
+        : rect.left + rect.width * (i / (values.length - 1));
+    double yFor(double v) => rect.bottom - rect.height * ((v - lo) / (hi - lo));
+
+    // Recessive typical-range band (context, not a verdict) — matches TrendChart.
+    if (low != null && high != null) {
+      final top = yFor(math.min(high!, hi));
+      final bottom = yFor(math.max(low!, lo));
+      final bandRect = Rect.fromLTRB(
+        rect.left,
+        math.max(top, rect.top),
+        rect.right,
+        math.min(bottom, rect.bottom),
+      );
+      if (bandRect.height > 0) canvas.drawRect(bandRect, Paint()..color = bandColor);
+    }
+
+    final path = Path();
+    for (var i = 0; i < values.length; i++) {
+      final o = Offset(xFor(i), yFor(values[i]));
+      i == 0 ? path.moveTo(o.dx, o.dy) : path.lineTo(o.dx, o.dy);
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round,
+    );
+
+    // Latest point, with a surface ring so it reads over the line and band.
+    final last = Offset(xFor(values.length - 1), yFor(values.last));
+    canvas.drawCircle(last, 3.5, Paint()..color = surfaceColor);
+    canvas.drawCircle(last, 2.2, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_SparklinePainter old) =>
+      old.values != values || old.color != color;
+}
+
 class _TrendPainter extends CustomPainter {
   _TrendPainter({
     required this.geom,

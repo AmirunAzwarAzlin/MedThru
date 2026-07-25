@@ -52,11 +52,16 @@ class RecordFutureList extends StatelessWidget {
     required this.future,
     required this.itemBuilder,
     required this.emptyLabel,
+    this.headerBuilder,
   });
 
   final Future<List<Map<String, dynamic>>> future;
   final Widget Function(Map<String, dynamic>) itemBuilder;
   final String emptyLabel;
+
+  /// Optional widget shown above the list, given the fetched rows — e.g. a
+  /// trends summary for lab results. Only rendered when there are rows.
+  final Widget Function(List<Map<String, dynamic>> rows)? headerBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -89,7 +94,10 @@ class RecordFutureList extends StatelessWidget {
         }
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-          children: [for (final r in rows) itemBuilder(r)],
+          children: [
+            if (headerBuilder != null) headerBuilder!(rows),
+            for (final r in rows) itemBuilder(r),
+          ],
         );
       },
     );

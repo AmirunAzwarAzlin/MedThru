@@ -9,6 +9,7 @@ import 'auth/register_patient_screen.dart';
 import 'doctor/patient_directory_screen.dart';
 import 'doctor/appointment_queue_screen.dart';
 import 'doctor/doctor_dashboard_screen.dart';
+import 'doctor/reports_screen.dart';
 
 /// Landing page: introduces Med-IC before pushing anyone to sign in,
 /// then offers the actions. Becomes doctor-aware once signed in.
@@ -73,6 +74,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const PatientDirectoryScreen()),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Reports',
+                  icon: const Icon(Icons.insights_outlined),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ReportsScreen()),
                   ),
                 ),
                 // Account actions tucked into a menu so the bar stays tidy on

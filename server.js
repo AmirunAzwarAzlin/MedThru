@@ -1035,6 +1035,64 @@ app.delete('/api/patients/token/:token/documents/:id', lookupLimiter, (req, res)
   res.json({ deleted: true });
 });
 
+// --- Messages ---
+
+const MESSAGE_SELECT = `SELECT messages.id, messages.sender, messages.body,
+  messages.created_at, doctors.name AS doctor_name
+  FROM messages LEFT JOIN doctors ON doctors.id = messages.doctor_id`;
+
+function messageThread(patientId) {
+  return db.prepare(
+    `${MESSAGE_SELECT} WHERE messages.patient_id = ?
+     ORDER BY messages.created_at ASC, messages.id ASC`
+  ).all(patientId);
+}
+
+function insertMessage(patientId, sender, doctorId, body) {
+  const result = db.prepare(
+    `INSERT INTO messages (patient_id, sender, doctor_id, body) VALUES (?, ?, ?, ?)`
+  ).run(patientId, sender, doctorId, body.slice(0, 2000));
+  return db.prepare(`${MESSAGE_SELECT} WHERE messages.id = ?`).get(Number(result.lastInsertRowid));
+}
+
+/// The patient's own thread, reached with their card (or phone session).
+app.get('/api/patients/token/:token/messages', lookupLimiter, (req, res) => {
+  const patient = resolvePatientFromReq(req);
+  if (!patient) {
+    return res.status(404).json({ error: 'No patient found for this card' });
+  }
+  res.json(messageThread(patient.id));
+});
+
+app.post('/api/patients/token/:token/messages', lookupLimiter, (req, res) => {
+  const patient = resolvePatientFromReq(req);
+  if (!patient) {
+    return res.status(404).json({ error: 'No patient found for this card' });
+  }
+  const body = optionalText(req.body.body);
+  if (!body) {
+    return res.status(400).json({ error: 'Message cannot be empty' });
+  }
+  res.status(201).json(insertMessage(patient.id, 'patient', null, body));
+});
+
+/// The same thread from the doctor's side, by patient id.
+app.get('/api/patients/:id/messages', requireDoctor, (req, res) => {
+  res.json(messageThread(req.params.id));
+});
+
+app.post('/api/patients/:id/messages', requireDoctor, (req, res) => {
+  const patient = db.prepare(`SELECT id FROM patients WHERE id = ?`).get(req.params.id);
+  if (!patient) {
+    return res.status(404).json({ error: 'Patient not found' });
+  }
+  const body = optionalText(req.body.body);
+  if (!body) {
+    return res.status(400).json({ error: 'Message cannot be empty' });
+  }
+  res.status(201).json(insertMessage(patient.id, 'doctor', req.doctor.id, body));
+});
+
 // --- Clinics and appointments ---
 //
 // Booking follows the same trust rule as readings: possession of the card is
@@ -1397,6 +1455,74 @@ app.get('/api/doctor/dashboard', requireDoctor, (req, res) => {
       })),
     },
     newPatients,
+  });
+});
+
+/// Practice analytics for the Reports page: appointment volume over the last
+/// eight weeks, the most common diagnoses, and the split of appointments by
+/// status. All doctor-only, all from real rows.
+app.get('/api/doctor/reports', requireDoctor, (req, res) => {
+  const today = new Date(
+    `${db.prepare(`SELECT date('now', 'localtime') AS d`).get().d}T00:00:00`
+  );
+  // Monday of the current week (ISO: Monday = 0).
+  const mondayOffset = (today.getDay() + 6) % 7;
+  const thisMonday = new Date(today);
+  thisMonday.setDate(today.getDate() - mondayOffset);
+
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const weeks = [];
+  for (let i = 7; i >= 0; i -= 1) {
+    const start = new Date(thisMonday);
+    start.setDate(thisMonday.getDate() - i * 7);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 7);
+    weeks.push({
+      start,
+      end,
+      label: `${start.getDate()} ${months[start.getMonth()]}`,
+      completed: 0,
+      cancelled: 0,
+      total: 0,
+    });
+  }
+
+  const recent = db.prepare(
+    `SELECT substr(starts_at, 1, 10) AS day, status FROM appointments
+     WHERE starts_at >= datetime('now', 'localtime', '-56 days')`
+  ).all();
+  for (const r of recent) {
+    const d = new Date(`${r.day}T00:00:00`);
+    const w = weeks.find((wk) => d >= wk.start && d < wk.end);
+    if (!w) continue;
+    w.total += 1;
+    if (r.status === 'completed') w.completed += 1;
+    else if (r.status === 'cancelled' || r.status === 'rejected') w.cancelled += 1;
+  }
+
+  // Most common diagnoses, deduped case-insensitively but shown in their
+  // recorded casing.
+  const topConditions = db.prepare(
+    `SELECT condition_name AS name, COUNT(*) AS count FROM medical_history
+     WHERE condition_name IS NOT NULL AND TRIM(condition_name) <> ''
+     GROUP BY LOWER(TRIM(condition_name))
+     ORDER BY count DESC, name ASC LIMIT 6`
+  ).all();
+
+  const statusBreakdown = db.prepare(
+    `SELECT status, COUNT(*) AS count FROM appointments GROUP BY status`
+  ).all();
+
+  res.json({
+    appointmentsByWeek: weeks.map((w) => ({
+      label: w.label,
+      completed: w.completed,
+      cancelled: w.cancelled,
+      total: w.total,
+    })),
+    topConditions,
+    statusBreakdown,
   });
 });
 

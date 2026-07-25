@@ -272,6 +272,16 @@ class MedThruApi extends ChangeNotifier {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  /// Practice analytics for the Reports page: appointments by week, top
+  /// conditions, and appointment status breakdown. Doctor-only.
+  Future<Map<String, dynamic>> getDoctorReports() async {
+    final res = await http.get(Uri.parse('$_baseUrl/doctor/reports'), headers: _headers);
+    if (res.statusCode != 200) {
+      throw _errorFrom(res, 'Could not load reports');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   /// A single patient's full record by id — the doctor-only counterpart to
   /// [lookupByToken], for browsing without a card (e.g. from the directory).
   Future<Map<String, dynamic>> getPatientById(int id) async {
@@ -786,6 +796,39 @@ class MedThruApi extends ChangeNotifier {
       throw _errorFrom(res, 'Could not open the document');
     }
     return res.bodyBytes;
+  }
+
+  // --- Messages ---
+
+  /// The patient's own message thread, via their card (or phone session).
+  Future<List<Map<String, dynamic>>> getMessages(String token) =>
+      _listByToken('messages', token);
+
+  Future<Map<String, dynamic>> sendMessageAsPatient(String token, String body) =>
+      _addByToken('messages', token, {'body': body});
+
+  /// The same thread from the doctor's side, by patient id (doctor auth).
+  Future<List<Map<String, dynamic>>> getMessagesForPatient(int patientId) async {
+    final res = await http.get(
+      Uri.parse('$_baseUrl/patients/$patientId/messages'),
+      headers: _headers,
+    );
+    if (res.statusCode != 200) {
+      throw _errorFrom(res, 'Could not load messages');
+    }
+    return (jsonDecode(res.body) as List<dynamic>).cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> sendMessageAsDoctor(int patientId, String body) async {
+    final res = await http.post(
+      Uri.parse('$_baseUrl/patients/$patientId/messages'),
+      headers: _headers,
+      body: jsonEncode({'body': body}),
+    );
+    if (res.statusCode != 201) {
+      throw _errorFrom(res, 'Could not send message');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   /// A patient editing their own name and/or date of birth. Narrower than

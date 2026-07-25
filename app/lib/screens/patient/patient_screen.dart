@@ -4,7 +4,7 @@ import '../../health_record_widgets.dart' show EmergencyContactCard;
 import '../../pdf_export.dart';
 import '../../readings.dart';
 import '../../theme.dart';
-import '../../trend_chart.dart' show longDate;
+import '../../trend_chart.dart' show longDate, Sparkline;
 import '../../widgets.dart';
 import 'edit_patient_screen.dart';
 import 'edit_profile_screen.dart';
@@ -13,6 +13,7 @@ import '../health_records/add_reading_screen.dart';
 import 'appointments_screen.dart';
 import 'care_plan_screen.dart';
 import 'clinical_updates_screen.dart';
+import '../messages/conversation_screen.dart';
 import 'health_records_menu_screen.dart';
 import '../health_records/health_record_list_screen.dart';
 
@@ -247,6 +248,18 @@ class _PatientScreenState extends State<PatientScreen>
     );
   }
 
+  Future<void> _openMessages() {
+    return Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ConversationScreen(
+          cardToken: widget.cardToken,
+          title: 'Messages',
+        ),
+      ),
+    );
+  }
+
   Future<void> _openUpdates(bool isDoctor) {
     return Navigator.push(
       context,
@@ -381,6 +394,7 @@ class _PatientScreenState extends State<PatientScreen>
         onOpenAppointments: _openAppointments,
         onOpenHealthRecords: _openHealthRecords,
         onOpenUpdates: () => _openUpdates(isDoctor),
+        onOpenMessages: _openMessages,
       ),
       _ProfileTab(
         val: _val,
@@ -499,6 +513,7 @@ class _HomeTab extends StatefulWidget {
     required this.onOpenAppointments,
     required this.onOpenHealthRecords,
     required this.onOpenUpdates,
+    required this.onOpenMessages,
   });
 
   final Map<String, dynamic> patient;
@@ -512,6 +527,7 @@ class _HomeTab extends StatefulWidget {
   final VoidCallback onOpenAppointments;
   final Future<void> Function() onOpenHealthRecords;
   final VoidCallback onOpenUpdates;
+  final VoidCallback onOpenMessages;
 
   @override
   State<_HomeTab> createState() => _HomeTabState();
@@ -636,6 +652,14 @@ class _HomeTabState extends State<_HomeTab> {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 12),
+        ActionTile(
+          icon: Icons.forum_outlined,
+          label: 'Messages',
+          color: MedThruTheme.iconGreen,
+          tile: MedThruTheme.tileGreen,
+          onTap: widget.onOpenMessages,
         ),
         const SizedBox(height: 22),
         FilledButton.icon(
@@ -1270,6 +1294,18 @@ class _VitalsSnapshot extends StatelessWidget {
         .where((t) => t.category == ReadingCategory.vital && latestByType.containsKey(t.key))
         .toList();
 
+    // Each metric's own values, oldest-to-newest, for its sparkline. `readings`
+    // is newest-first, so reverse; keep the most recent dozen for a legible line.
+    List<double> seriesFor(String type) {
+      final vals = <double>[];
+      for (final r in readings.reversed) {
+        if (r['reading_type'] == type && r['value'] is num) {
+          vals.add((r['value'] as num).toDouble());
+        }
+      }
+      return vals.length > 12 ? vals.sublist(vals.length - 12) : vals;
+    }
+
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: latestByType.isEmpty ? onAddReading : onTap,
@@ -1321,7 +1357,11 @@ class _VitalsSnapshot extends StatelessWidget {
                 runSpacing: 10,
                 children: [
                   for (final spec in specs)
-                    _VitalChip(spec: spec, reading: latestByType[spec.key]!),
+                    _VitalChip(
+                      spec: spec,
+                      reading: latestByType[spec.key]!,
+                      series: seriesFor(spec.key),
+                    ),
                 ],
               ),
           ],
@@ -1332,9 +1372,12 @@ class _VitalsSnapshot extends StatelessWidget {
 }
 
 class _VitalChip extends StatelessWidget {
-  const _VitalChip({required this.spec, required this.reading});
+  const _VitalChip({required this.spec, required this.reading, required this.series});
   final ReadingType spec;
   final Map<String, dynamic> reading;
+
+  /// This metric's values oldest-to-newest, for the trend sparkline.
+  final List<double> series;
 
   @override
   Widget build(BuildContext context) {
@@ -1380,6 +1423,19 @@ class _VitalChip extends StatelessWidget {
                 fontWeight: FontWeight.w600,
                 color: within ? MedThruTheme.iconGreen : MedThruTheme.danger,
               ),
+            ),
+          ],
+          // The trend at a glance — only once there are enough points to draw a
+          // line; a single reading has no trend to show.
+          if (series.length >= 2) ...[
+            const SizedBox(height: 6),
+            Sparkline(
+              values: series,
+              color: spec.color(context),
+              low: spec.low,
+              high: spec.high,
+              width: 96,
+              height: 24,
             ),
           ],
         ],

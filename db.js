@@ -198,6 +198,19 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_documents_patient ON documents(patient_id, created_at DESC);
 
+  -- A per-patient message thread shared between the patient (via their card)
+  -- and any doctor viewing their record. Not clinical data, but server-side so
+  -- both sides see the same conversation.
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_id INTEGER NOT NULL REFERENCES patients(id),
+    sender TEXT NOT NULL,               -- 'patient' | 'doctor'
+    doctor_id INTEGER REFERENCES doctors(id),
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_messages_patient ON messages(patient_id, created_at ASC);
+
   -- Hospitals and clinics a patient can book into. Opening hours plus a slot
   -- length are enough to generate the bookable times for any date, so there is
   -- no need to store a row per empty slot.

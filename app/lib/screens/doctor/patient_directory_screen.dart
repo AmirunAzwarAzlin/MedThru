@@ -19,6 +19,9 @@ class _PatientDirectoryScreenState extends State<PatientDirectoryScreen> {
   Timer? _debounce;
   late Future<List<Map<String, dynamic>>> _future;
 
+  /// Client-side blood-type filter over the fetched list.
+  String? _blood;
+
   @override
   void initState() {
     super.initState();
@@ -87,8 +90,8 @@ class _PatientDirectoryScreenState extends State<PatientDirectoryScreen> {
                       subtitle: snap.error.toString().replaceFirst('Exception: ', ''),
                     );
                   }
-                  final patients = snap.data ?? [];
-                  if (patients.isEmpty) {
+                  final all = snap.data ?? [];
+                  if (all.isEmpty) {
                     return CenteredMessage(
                       icon: Icons.people_outline,
                       title: _search.text.isEmpty
@@ -96,13 +99,59 @@ class _PatientDirectoryScreenState extends State<PatientDirectoryScreen> {
                           : 'No patients match "${_search.text}".',
                     );
                   }
-                  return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    itemCount: patients.length,
-                    itemBuilder: (context, i) {
-                      final p = patients[i];
-                      final cardStatus = p['card_status'] as String?;
-                      return Card(
+                  final bloods = all
+                      .map((p) => p['blood_type'] as String?)
+                      .whereType<String>()
+                      .where((b) => b.isNotEmpty)
+                      .toSet()
+                      .toList()
+                    ..sort();
+                  final patients = _blood == null
+                      ? all
+                      : all.where((p) => p['blood_type'] == _blood).toList();
+                  return Column(
+                    children: [
+                      if (bloods.length > 1)
+                        SizedBox(
+                          height: 44,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ChoiceChip(
+                                  label: const Text('All'),
+                                  selected: _blood == null,
+                                  onSelected: (_) => setState(() => _blood = null),
+                                ),
+                              ),
+                              for (final b in bloods)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: ChoiceChip(
+                                    label: Text(b),
+                                    selected: _blood == b,
+                                    onSelected: (_) =>
+                                        setState(() => _blood = _blood == b ? null : b),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      Expanded(
+                        child: patients.isEmpty
+                            ? CenteredMessage(
+                                icon: Icons.filter_alt_off_outlined,
+                                title: 'No $_blood patients.',
+                              )
+                            : ListView.builder(
+                                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                                itemCount: patients.length,
+                                itemBuilder: (context, i) {
+                                  final p = patients[i];
+                                  final cardStatus = p['card_status'] as String?;
+                                  return Card(
                         margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
                           onTap: () => Navigator.push(
@@ -141,7 +190,10 @@ class _PatientDirectoryScreenState extends State<PatientDirectoryScreen> {
                         ),
                       );
                     },
-                  );
+                              ),
+                            ),
+                          ],
+                        );
                 },
               ),
             ),
