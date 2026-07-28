@@ -180,6 +180,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                       color: scheme.surfaceContainerLow,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: scheme.outlineVariant),
+                      boxShadow: MedThruTheme.softShadow,
                     ),
                     child: Column(
                       children: [
@@ -219,17 +220,21 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                       // reminding about — a pending request might still be
                       // rejected, and a past one has nothing left to remind.
                       remindOn: _reminding.contains(a['id'] as int),
-                      onToggleRemind: a['status'] == 'confirmed' &&
-                              DateTime.parse(a['starts_at'] as String)
-                                  .isAfter(DateTime.now())
+                      onToggleRemind:
+                          a['status'] == 'confirmed' &&
+                              DateTime.parse(
+                                a['starts_at'] as String,
+                              ).isAfter(DateTime.now())
                           ? () => _toggleReminder(a)
                           : null,
                       // Exportable while it still holds a slot and hasn't
                       // happened — no point adding a past or dead one to a
                       // calendar.
-                      onAddToCalendar: _cancellable.contains(a['status']) &&
-                              DateTime.parse(a['starts_at'] as String)
-                                  .isAfter(DateTime.now())
+                      onAddToCalendar:
+                          _cancellable.contains(a['status']) &&
+                              DateTime.parse(
+                                a['starts_at'] as String,
+                              ).isAfter(DateTime.now())
                           ? () => exportAppointmentToCalendar(context, a)
                           : null,
                     ),
@@ -338,14 +343,19 @@ class _AppointmentCard extends StatelessWidget {
                   if (onAddToCalendar != null)
                     TextButton.icon(
                       onPressed: onAddToCalendar,
-                      icon: const Icon(Icons.event_available_outlined, size: 16),
+                      icon: const Icon(
+                        Icons.event_available_outlined,
+                        size: 16,
+                      ),
                       label: const Text('Add to calendar'),
                     ),
                   if (onToggleRemind != null)
                     TextButton.icon(
                       onPressed: onToggleRemind,
                       icon: Icon(
-                        remindOn ? Icons.notifications_active : Icons.notifications_outlined,
+                        remindOn
+                            ? Icons.notifications_active
+                            : Icons.notifications_outlined,
                         size: 16,
                       ),
                       label: Text(remindOn ? 'Reminder on' : 'Remind me'),
@@ -355,7 +365,9 @@ class _AppointmentCard extends StatelessWidget {
                       onPressed: onCancel,
                       icon: const Icon(Icons.close, size: 16),
                       label: const Text('Cancel'),
-                      style: TextButton.styleFrom(foregroundColor: scheme.error),
+                      style: TextButton.styleFrom(
+                        foregroundColor: scheme.error,
+                      ),
                     ),
                 ],
               ),

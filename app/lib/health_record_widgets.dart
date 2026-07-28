@@ -9,12 +9,18 @@ import 'trend_chart.dart';
 /// loading/error/empty wrapper, and — for vitals and anthropometry — the
 /// same trend-card-with-collapsible-history layout.
 
-String whoFor(Map<String, dynamic> row) =>
-    row['source'] == 'patient' ? 'Self-reported' : (row['doctor_name'] as String? ?? 'Clinician');
+String whoFor(Map<String, dynamic> row) => row['source'] == 'patient'
+    ? 'Self-reported'
+    : (row['doctor_name'] as String? ?? 'Clinician');
 
 /// A small "who added this, and when" pill, shared across every record type.
 class SourcePill extends StatelessWidget {
-  const SourcePill({super.key, required this.bySelf, required this.who, required this.date});
+  const SourcePill({
+    super.key,
+    required this.bySelf,
+    required this.who,
+    required this.date,
+  });
   final bool bySelf;
   final String who;
   final String date;
@@ -27,18 +33,27 @@ class SourcePill extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
           decoration: BoxDecoration(
-            color: bySelf ? scheme.surfaceContainerHighest : scheme.primaryContainer,
+            color: bySelf
+                ? scheme.surfaceContainerHighest
+                : scheme.primaryContainer,
             borderRadius: BorderRadius.circular(6),
           ),
-          child: Text(who,
-              style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
-                color: bySelf ? scheme.onSurfaceVariant : scheme.onPrimaryContainer,
-              )),
+          child: Text(
+            who,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: bySelf
+                  ? scheme.onSurfaceVariant
+                  : scheme.onPrimaryContainer,
+            ),
+          ),
         ),
         const SizedBox(width: 8),
-        Text(date, style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+        Text(
+          date,
+          style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+        ),
       ],
     );
   }
@@ -76,8 +91,10 @@ class RecordFutureList extends StatelessWidget {
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(24),
-              child: Text(snap.error.toString().replaceFirst('Exception: ', ''),
-                  style: TextStyle(color: scheme.error)),
+              child: Text(
+                snap.error.toString().replaceFirst('Exception: ', ''),
+                style: TextStyle(color: scheme.error),
+              ),
             ),
           );
         }
@@ -86,9 +103,11 @@ class RecordFutureList extends StatelessWidget {
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(32),
-              child: Text(emptyLabel,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: scheme.onSurfaceVariant)),
+              child: Text(
+                emptyLabel,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
             ),
           );
         }
@@ -167,32 +186,48 @@ class AllergyCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(row['allergen'] as String,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+                child: Text(
+                  row['allergen'] as String,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14.5,
+                  ),
+                ),
               ),
               if (severity != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: severityColor(severity).withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Text(severity,
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: severityColor(severity))),
+                  child: Text(
+                    severity,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: severityColor(severity),
+                    ),
+                  ),
                 ),
             ],
           ),
           if (reaction != null && reaction.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text('Reaction: $reaction',
-                style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+            Text(
+              'Reaction: $reaction',
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+            ),
           ],
           if (note != null && note.isNotEmpty) ...[
             const SizedBox(height: 3),
-            Text(note, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+            Text(
+              note,
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+            ),
           ],
           const SizedBox(height: 6),
           SourcePill(
@@ -222,7 +257,9 @@ class MedicationCard extends StatelessWidget {
       if (dosage != null && dosage.isNotEmpty) dosage,
       if (frequency != null && frequency.isNotEmpty) frequency,
     ].join(' · ');
-    final range = start == null && end == null ? null : '${start ?? '—'} to ${end ?? 'ongoing'}';
+    final range = start == null && end == null
+        ? null
+        : '${start ?? '—'} to ${end ?? 'ongoing'}';
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(13),
@@ -234,19 +271,30 @@ class MedicationCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(row['name'] as String,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+          Text(
+            row['name'] as String,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
+          ),
           if (details.isNotEmpty) ...[
             const SizedBox(height: 3),
-            Text(details, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+            Text(
+              details,
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+            ),
           ],
           if (range != null) ...[
             const SizedBox(height: 3),
-            Text(range, style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
+            Text(
+              range,
+              style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+            ),
           ],
           if (note != null && note.isNotEmpty) ...[
             const SizedBox(height: 3),
-            Text(note, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+            Text(
+              note,
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+            ),
           ],
           const SizedBox(height: 6),
           SourcePill(
@@ -284,45 +332,68 @@ class VaccinationCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(row['vaccine'] as String,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+                child: Text(
+                  row['vaccine'] as String,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14.5,
+                  ),
+                ),
               ),
               if (dose != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: scheme.primaryContainer,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Text('Dose $dose',
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: scheme.onPrimaryContainer)),
+                  child: Text(
+                    'Dose $dose',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onPrimaryContainer,
+                    ),
+                  ),
                 ),
             ],
           ),
           const SizedBox(height: 4),
-          Text('Administered ${row['administered_at']}',
-              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+          Text(
+            'Administered ${row['administered_at']}',
+            style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+          ),
           if (nextDue != null && nextDue.isNotEmpty) ...[
             const SizedBox(height: 3),
-            Builder(builder: (context) {
-              final (label, color) = nextDoseStatus(context, nextDue);
-              return Row(
-                children: [
-                  Icon(Icons.event_repeat_outlined, size: 14, color: color),
-                  const SizedBox(width: 6),
-                  Text(label,
+            Builder(
+              builder: (context) {
+                final (label, color) = nextDoseStatus(context, nextDue);
+                return Row(
+                  children: [
+                    Icon(Icons.event_repeat_outlined, size: 14, color: color),
+                    const SizedBox(width: 6),
+                    Text(
+                      label,
                       style: TextStyle(
-                          fontSize: 12.5, color: color, fontWeight: FontWeight.w600)),
-                ],
-              );
-            }),
+                        fontSize: 12.5,
+                        color: color,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
           ],
           if (note != null && note.isNotEmpty) ...[
             const SizedBox(height: 3),
-            Text(note, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+            Text(
+              note,
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+            ),
           ],
           const SizedBox(height: 6),
           SourcePill(
@@ -361,33 +432,54 @@ class MedicalHistoryCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(row['condition_name'] as String,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+                child: Text(
+                  row['condition_name'] as String,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14.5,
+                  ),
+                ),
               ),
               if (status != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
-                    color: (resolved ? MedThruTheme.iconGreen : MedThruTheme.iconBlue)
-                        .withValues(alpha: 0.14),
+                    color:
+                        (resolved
+                                ? MedThruTheme.iconGreen
+                                : MedThruTheme.iconBlue)
+                            .withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Text(resolved ? 'Resolved' : 'Active',
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: resolved ? MedThruTheme.iconGreen : MedThruTheme.iconBlue)),
+                  child: Text(
+                    resolved ? 'Resolved' : 'Active',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: resolved
+                          ? MedThruTheme.iconGreen
+                          : MedThruTheme.iconBlue,
+                    ),
+                  ),
                 ),
             ],
           ),
           if (diagnosedAt != null && diagnosedAt.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text('Diagnosed $diagnosedAt',
-                style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+            Text(
+              'Diagnosed $diagnosedAt',
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+            ),
           ],
           if (note != null && note.isNotEmpty) ...[
             const SizedBox(height: 3),
-            Text(note, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+            Text(
+              note,
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+            ),
           ],
           const SizedBox(height: 6),
           SourcePill(
@@ -424,36 +516,56 @@ class EmergencyContactCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(row['name'] as String,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+                child: Text(
+                  row['name'] as String,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14.5,
+                  ),
+                ),
               ),
               if (relationship != null && relationship.isNotEmpty)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: scheme.primaryContainer,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Text(relationship,
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: scheme.onPrimaryContainer)),
+                  child: Text(
+                    relationship,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onPrimaryContainer,
+                    ),
+                  ),
                 ),
             ],
           ),
           const SizedBox(height: 4),
           Row(
             children: [
-              Icon(Icons.phone_outlined, size: 14, color: scheme.onSurfaceVariant),
+              Icon(
+                Icons.phone_outlined,
+                size: 14,
+                color: scheme.onSurfaceVariant,
+              ),
               const SizedBox(width: 6),
-              Text(row['phone'] as String,
-                  style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+              Text(
+                row['phone'] as String,
+                style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+              ),
             ],
           ),
           if (note != null && note.isNotEmpty) ...[
             const SizedBox(height: 3),
-            Text(note, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+            Text(
+              note,
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+            ),
           ],
           const SizedBox(height: 6),
           SourcePill(
@@ -498,12 +610,20 @@ class LabResultCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(row['test_name'] as String,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+                child: Text(
+                  row['test_name'] as String,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14.5,
+                  ),
+                ),
               ),
               if (status != null && status.isNotEmpty)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: labStatusColor(status).withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(20),
@@ -511,31 +631,41 @@ class LabResultCard extends StatelessWidget {
                   child: Text(
                     '${status[0].toUpperCase()}${status.substring(1)}',
                     style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: labStatusColor(status)),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: labStatusColor(status),
+                    ),
                   ),
                 ),
             ],
           ),
           if (valueLine.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(valueLine,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            Text(
+              valueLine,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
           ],
           if (range != null && range.isNotEmpty) ...[
             const SizedBox(height: 2),
-            Text('Reference: $range',
-                style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
+            Text(
+              'Reference: $range',
+              style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+            ),
           ],
           if (takenAt != null && takenAt.isNotEmpty) ...[
             const SizedBox(height: 3),
-            Text('Taken $takenAt',
-                style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
+            Text(
+              'Taken $takenAt',
+              style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+            ),
           ],
           if (note != null && note.isNotEmpty) ...[
             const SizedBox(height: 3),
-            Text(note, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+            Text(
+              note,
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+            ),
           ],
           const SizedBox(height: 6),
           SourcePill(
@@ -561,7 +691,9 @@ class ReadingRow extends StatelessWidget {
     final spec = readingTypes[reading['reading_type'] as String];
     final value = reading['value'] as num;
     final bySelf = reading['source'] == 'patient';
-    final who = bySelf ? 'Self-reported' : (reading['doctor_name'] as String? ?? 'Clinician');
+    final who = bySelf
+        ? 'Self-reported'
+        : (reading['doctor_name'] as String? ?? 'Clinician');
     final note = reading['note'] as String?;
 
     return Container(
@@ -575,8 +707,11 @@ class ReadingRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(spec?.icon ?? Icons.monitor_heart_outlined,
-              size: 18, color: spec?.color(context) ?? scheme.primary),
+          Icon(
+            spec?.icon ?? Icons.monitor_heart_outlined,
+            size: 18,
+            color: spec?.color(context) ?? scheme.primary,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -585,11 +720,20 @@ class ReadingRow extends StatelessWidget {
                 Text(
                   '${spec?.label ?? reading['reading_type']}: '
                   '${spec?.format(value) ?? value} ${reading['unit']}',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14.5,
+                  ),
                 ),
                 if (note != null && note.isNotEmpty) ...[
                   const SizedBox(height: 3),
-                  Text(note, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+                  Text(
+                    note,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
                 ],
                 const SizedBox(height: 4),
                 SourcePill(
@@ -603,7 +747,11 @@ class ReadingRow extends StatelessWidget {
           if (onDelete != null)
             IconButton(
               tooltip: 'Delete',
-              icon: Icon(Icons.delete_outline, size: 18, color: scheme.onSurfaceVariant),
+              icon: Icon(
+                Icons.delete_outline,
+                size: 18,
+                color: scheme.onSurfaceVariant,
+              ),
               visualDensity: VisualDensity.compact,
               onPressed: onDelete,
             ),
@@ -667,6 +815,7 @@ class _TrendCardState extends State<TrendCard> {
         color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: scheme.outlineVariant),
+        boxShadow: MedThruTheme.softShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -686,35 +835,56 @@ class _TrendCardState extends State<TrendCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(spec.label,
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15.5,
-                            color: scheme.onSurface)),
+                    Text(
+                      spec.label,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15.5,
+                        color: scheme.onSurface,
+                      ),
+                    ),
                     const SizedBox(height: 2),
-                    Text(spec.typical,
-                        style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+                    Text(
+                      spec.typical,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
                   ],
                 ),
               ),
               if (latest == null)
-                Text('—', style: TextStyle(fontSize: 20, color: scheme.onSurfaceVariant))
+                Text(
+                  '—',
+                  style: TextStyle(
+                    fontSize: 20,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                )
               else
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text('${spec.format(latest)} ${spec.unit}',
-                        style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: scheme.onSurface)),
+                    Text(
+                      '${spec.format(latest)} ${spec.unit}',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: scheme.onSurface,
+                      ),
+                    ),
                     if (within != null)
                       Text(
-                        within ? 'within typical range' : 'outside typical range',
+                        within
+                            ? 'within typical range'
+                            : 'outside typical range',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: within ? MedThruTheme.iconGreen : MedThruTheme.danger,
+                          color: within
+                              ? MedThruTheme.iconGreen
+                              : MedThruTheme.danger,
                         ),
                       ),
                   ],
@@ -733,8 +903,10 @@ class _TrendCardState extends State<TrendCard> {
             TrendChart(points: chartPoints, band: chartBand, spec: spec),
           ] else if (points.length == 1) ...[
             const SizedBox(height: 12),
-            Text('Log another reading to see a trend.',
-                style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
+            Text(
+              'Log another reading to see a trend.',
+              style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+            ),
           ],
           if (rows.isNotEmpty) ...[
             const SizedBox(height: 10),
@@ -752,11 +924,14 @@ class _TrendCardState extends State<TrendCard> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      _historyOpen ? 'Hide history' : 'History (${rows.length})',
+                      _historyOpen
+                          ? 'Hide history'
+                          : 'History (${rows.length})',
                       style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: scheme.onSurfaceVariant),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -821,16 +996,20 @@ class ReadingCategoryBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final specs = readingTypes.values.where((t) => t.category == category).toList();
+    final specs = readingTypes.values
+        .where((t) => t.category == category)
+        .toList();
 
     List<Map<String, dynamic>> rowsFor(String type) =>
         rows.where((r) => r['reading_type'] == type).toList();
 
     List<TrendPoint> pointsFor(String type) => rowsFor(type)
-        .map((r) => (
-              t: DateTime.parse(r['taken_at'] as String),
-              v: (r['value'] as num).toDouble(),
-            ))
+        .map(
+          (r) => (
+            t: DateTime.parse(r['taken_at'] as String),
+            v: (r['value'] as num).toDouble(),
+          ),
+        )
         .toList()
         .reversed
         .toList();

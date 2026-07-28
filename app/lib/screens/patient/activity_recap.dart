@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../activity_summary.dart';
+import '../../theme.dart';
 import '../../trend_chart.dart' show Sparkline;
 
 /// A weekly recap of the patient's most active metrics — value, week-over-week
@@ -22,6 +23,7 @@ class ActivityRecapCard extends StatelessWidget {
         color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: scheme.outlineVariant),
+        boxShadow: MedThruTheme.softShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

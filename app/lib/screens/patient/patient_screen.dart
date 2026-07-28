@@ -93,7 +93,11 @@ class _PatientScreenState extends State<PatientScreen>
       // re-prompt with the new one.
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not refresh: this card\'s password has changed.')),
+        const SnackBar(
+          content: Text(
+            'Could not refresh: this card\'s password has changed.',
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -254,10 +258,8 @@ class _PatientScreenState extends State<PatientScreen>
     return Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ConversationScreen(
-          cardToken: widget.cardToken,
-          title: 'Messages',
-        ),
+        builder: (_) =>
+            ConversationScreen(cardToken: widget.cardToken, title: 'Messages'),
       ),
     );
   }
@@ -396,10 +398,7 @@ class _PatientScreenState extends State<PatientScreen>
       splashBorderRadius: BorderRadius.circular(20),
       labelColor: Colors.white,
       unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
-      labelStyle: const TextStyle(
-        fontWeight: FontWeight.w700,
-        fontSize: 13,
-      ),
+      labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
       unselectedLabelStyle: const TextStyle(
         fontWeight: FontWeight.w600,
         fontSize: 13,
@@ -652,7 +651,8 @@ class _HomeTabState extends State<_HomeTab> {
           future: _readings,
           builder: (context, snap) {
             final readings = snap.data;
-            if (readings == null) return const SizedBox.shrink(); // loading or failed
+            if (readings == null)
+              return const SizedBox.shrink(); // loading or failed
             return Padding(
               padding: const EdgeInsets.only(bottom: 18),
               child: _VitalsSnapshot(
@@ -997,7 +997,9 @@ class _IdentityCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: MedThruTheme.danger.withValues(alpha: 0.16),
               shape: BoxShape.circle,
-              border: Border.all(color: MedThruTheme.danger.withValues(alpha: 0.4)),
+              border: Border.all(
+                color: MedThruTheme.danger.withValues(alpha: 0.4),
+              ),
             ),
             child: const Icon(
               Icons.bloodtype_outlined,
@@ -1354,14 +1356,19 @@ class _VitalsSnapshot extends StatelessWidget {
     final latestByType = <String, Map<String, dynamic>>{};
     for (final r in readings) {
       final type = r['reading_type'] as String?;
-      if (type == null || readingTypes[type]?.category != ReadingCategory.vital) {
+      if (type == null ||
+          readingTypes[type]?.category != ReadingCategory.vital) {
         continue;
       }
       latestByType.putIfAbsent(type, () => r);
     }
 
     final specs = readingTypes.values
-        .where((t) => t.category == ReadingCategory.vital && latestByType.containsKey(t.key))
+        .where(
+          (t) =>
+              t.category == ReadingCategory.vital &&
+              latestByType.containsKey(t.key),
+        )
         .toList();
 
     // Each metric's own values, oldest-to-newest, for its sparkline. `readings`
@@ -1385,6 +1392,7 @@ class _VitalsSnapshot extends StatelessWidget {
           color: scheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: scheme.outlineVariant),
+          boxShadow: MedThruTheme.softShadow,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1411,7 +1419,11 @@ class _VitalsSnapshot extends StatelessWidget {
                 ),
                 if (latestByType.isNotEmpty) ...[
                   const SizedBox(width: 4),
-                  Icon(Icons.chevron_right, size: 18, color: scheme.onSurfaceVariant),
+                  Icon(
+                    Icons.chevron_right,
+                    size: 18,
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ],
               ],
             ),
@@ -1419,7 +1431,10 @@ class _VitalsSnapshot extends StatelessWidget {
             if (latestByType.isEmpty)
               Text(
                 'No vitals logged yet — tap to add your first reading.',
-                style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: scheme.onSurfaceVariant,
+                ),
               )
             else
               Wrap(
@@ -1442,7 +1457,11 @@ class _VitalsSnapshot extends StatelessWidget {
 }
 
 class _VitalChip extends StatelessWidget {
-  const _VitalChip({required this.spec, required this.reading, required this.series});
+  const _VitalChip({
+    required this.spec,
+    required this.reading,
+    required this.series,
+  });
   final ReadingType spec;
   final Map<String, dynamic> reading;
 

@@ -60,13 +60,15 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
 
   void _load() {
     _future = MedThruApi.instance.getMyAppointments(widget.cardToken);
-    _future.then((appts) {
-      if (!mounted) return;
-      setState(() => _byDay = _group(appts));
-    }).catchError((_) {
-      // A failed fetch just leaves an empty calendar; the full Appointments
-      // screen surfaces the actual error when the patient opens it.
-    });
+    _future
+        .then((appts) {
+          if (!mounted) return;
+          setState(() => _byDay = _group(appts));
+        })
+        .catchError((_) {
+          // A failed fetch just leaves an empty calendar; the full Appointments
+          // screen surfaces the actual error when the patient opens it.
+        });
   }
 
   static Map<DateTime, List<Map<String, dynamic>>> _group(
@@ -113,6 +115,7 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
         color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: scheme.outlineVariant),
+        boxShadow: MedThruTheme.softShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -154,19 +157,21 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Text.rich(
-        TextSpan(children: [
-          TextSpan(
-            text: '$logged',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              color: scheme.onSurface,
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '$logged',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: scheme.onSurface,
+              ),
             ),
-          ),
-          TextSpan(
-            text: ' of $daysInMonth days logged',
-            style: TextStyle(color: scheme.onSurfaceVariant),
-          ),
-        ]),
+            TextSpan(
+              text: ' of $daysInMonth days logged',
+              style: TextStyle(color: scheme.onSurfaceVariant),
+            ),
+          ],
+        ),
         style: const TextStyle(fontSize: 12.5),
       ),
     );
@@ -176,16 +181,16 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
   Widget _legend(ColorScheme scheme) {
     final labelStyle = TextStyle(fontSize: 11, color: scheme.onSurfaceVariant);
     Widget swatch(double alpha) => Container(
-          width: 11,
-          height: 11,
-          margin: const EdgeInsets.symmetric(horizontal: 1.5),
-          decoration: BoxDecoration(
-            color: alpha == 0.0
-                ? scheme.surfaceContainerHighest
-                : MedThruTheme.lime.withValues(alpha: alpha),
-            borderRadius: BorderRadius.circular(3),
-          ),
-        );
+      width: 11,
+      height: 11,
+      margin: const EdgeInsets.symmetric(horizontal: 1.5),
+      decoration: BoxDecoration(
+        color: alpha == 0.0
+            ? scheme.surfaceContainerHighest
+            : MedThruTheme.lime.withValues(alpha: alpha),
+        borderRadius: BorderRadius.circular(3),
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Wrap(
@@ -230,22 +235,24 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
           // Month heavy, year light — a small deliberate pairing rather than one
           // flat label.
           child: Text.rich(
-            TextSpan(children: [
-              TextSpan(
-                text: _months[_month.month - 1],
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: scheme.onSurface,
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: _months[_month.month - 1],
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: scheme.onSurface,
+                  ),
                 ),
-              ),
-              TextSpan(
-                text: ' ${_month.year}',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: scheme.onSurfaceVariant,
+                TextSpan(
+                  text: ' ${_month.year}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
-            ]),
+              ],
+            ),
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 14.5),
           ),
@@ -341,8 +348,8 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
           border: isSelected
               ? Border.all(color: MedThruTheme.blue, width: 2)
               : isToday
-                  ? Border.all(color: MedThruTheme.blue, width: 1.4)
-                  : null,
+              ? Border.all(color: MedThruTheme.blue, width: 1.4)
+              : null,
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -351,8 +358,9 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
               '${date.day}',
               style: TextStyle(
                 fontSize: 13,
-                fontWeight:
-                    (isToday || isSelected) ? FontWeight.w800 : FontWeight.w500,
+                fontWeight: (isToday || isSelected)
+                    ? FontWeight.w800
+                    : FontWeight.w500,
                 color: isToday ? MedThruTheme.blue : scheme.onSurface,
               ),
             ),
@@ -395,8 +403,10 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
     final String heading;
     if (_selected != null) {
       items = List.of(_byDay[_selected!] ?? const [])
-        ..sort((a, b) => (a['starts_at'] as String)
-            .compareTo(b['starts_at'] as String));
+        ..sort(
+          (a, b) =>
+              (a['starts_at'] as String).compareTo(b['starts_at'] as String),
+        );
       heading = _dayLabel(_selected!);
     } else {
       final next = _nextUpcoming();
@@ -483,7 +493,8 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
         final status = a['status'];
         if (status != 'confirmed' && status != 'requested') continue;
         final dt = DateTime.tryParse(
-            (a['starts_at'] as String).replaceFirst(' ', 'T'));
+          (a['starts_at'] as String).replaceFirst(' ', 'T'),
+        );
         if (dt == null || dt.isBefore(now)) continue;
         if (bestAt == null || dt.isBefore(bestAt)) {
           bestAt = dt;
@@ -495,8 +506,18 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
   }
 
   static const _months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
   ];
 
   String _dayLabel(DateTime d) =>

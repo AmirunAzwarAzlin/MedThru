@@ -84,6 +84,15 @@ class MedThruTheme {
   static const tileRed = Color(0xFFF6DAD5);
   static const tilePurple = Color(0xFFE6E2FB); // pale purple
 
+  // A soft, warm two-layer shadow that lifts white cards off the paper canvas
+  // — an ambient blur plus a tight contact shadow. Deliberately faint (~6% /
+  // 4%) so cards read as gently floating, not dropped. Barely visible on the
+  // dark fallback, which separates cards by surface colour instead.
+  static const softShadow = <BoxShadow>[
+    BoxShadow(color: Color(0x0F171013), blurRadius: 16, offset: Offset(0, 6)),
+    BoxShadow(color: Color(0x0A171013), blurRadius: 3, offset: Offset(0, 1)),
+  ];
+
   static ThemeData light() => _build(_lightScheme);
   static ThemeData dark() => _build(_darkScheme);
 
