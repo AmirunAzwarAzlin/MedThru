@@ -118,6 +118,7 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _header(scheme),
+          _consistencyLine(scheme),
           const SizedBox(height: 12),
           _weekdayRow(scheme),
           const SizedBox(height: 4),
@@ -129,15 +130,49 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
     );
   }
 
-  /// Graded green fill for a day's logging intensity; null for an unlogged day.
+  // The lime logging ramp. Lime is the brand's "positive figure" accent, so it
+  // reads as "you showed up" — and, unlike green, it can't be mistaken for the
+  // within-range success colour used on vitals. Dark ink text stays legible on
+  // it at every step.
+  static const _limeRamp = [0.0, 0.28, 0.55, 0.90];
+
+  /// Graded lime fill for a day's logging intensity; null for an unlogged day.
   Color? _heatColor(DateTime date) {
     final level = heatLevel(_counts[date] ?? 0);
     if (level == 0) return null;
-    return MedThruTheme.iconGreen
-        .withValues(alpha: const [0.0, 0.16, 0.34, 0.55][level]);
+    return MedThruTheme.lime.withValues(alpha: _limeRamp[level]);
   }
 
-  /// A compact key: the green logging scale, and what the appointment dot means.
+  /// States the month's logging record in words, so the grid reads as a
+  /// consistency record at a glance rather than a bare calendar.
+  Widget _consistencyLine(ColorScheme scheme) {
+    final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
+    var logged = 0;
+    for (var d = 1; d <= daysInMonth; d++) {
+      if ((_counts[DateTime(_month.year, _month.month, d)] ?? 0) > 0) logged++;
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text.rich(
+        TextSpan(children: [
+          TextSpan(
+            text: '$logged',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: scheme.onSurface,
+            ),
+          ),
+          TextSpan(
+            text: ' of $daysInMonth days logged',
+            style: TextStyle(color: scheme.onSurfaceVariant),
+          ),
+        ]),
+        style: const TextStyle(fontSize: 12.5),
+      ),
+    );
+  }
+
+  /// A compact key: the lime logging scale, and what the appointment dot means.
   Widget _legend(ColorScheme scheme) {
     final labelStyle = TextStyle(fontSize: 11, color: scheme.onSurfaceVariant);
     Widget swatch(double alpha) => Container(
@@ -147,7 +182,7 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
           decoration: BoxDecoration(
             color: alpha == 0.0
                 ? scheme.surfaceContainerHighest
-                : MedThruTheme.iconGreen.withValues(alpha: alpha),
+                : MedThruTheme.lime.withValues(alpha: alpha),
             borderRadius: BorderRadius.circular(3),
           ),
         );
@@ -163,10 +198,7 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
             children: [
               Text('Logged', style: labelStyle),
               const SizedBox(width: 6),
-              swatch(0.0),
-              swatch(0.16),
-              swatch(0.34),
-              swatch(0.55),
+              for (final a in _limeRamp) swatch(a),
             ],
           ),
           Row(
@@ -195,14 +227,27 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
         // Flexible so a long month label ellipsizes instead of overflowing the
         // row on narrow layouts, rather than forcing the controls off-edge.
         Flexible(
-          child: Text(
-            _monthLabel(_month),
+          // Month heavy, year light — a small deliberate pairing rather than one
+          // flat label.
+          child: Text.rich(
+            TextSpan(children: [
+              TextSpan(
+                text: _months[_month.month - 1],
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: scheme.onSurface,
+                ),
+              ),
+              TextSpan(
+                text: ' ${_month.year}',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ]),
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 14.5,
-              fontWeight: FontWeight.w800,
-              color: scheme.onSurface,
-            ),
+            style: const TextStyle(fontSize: 14.5),
           ),
         ),
         const Spacer(),
@@ -453,8 +498,6 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December',
   ];
-
-  String _monthLabel(DateTime m) => '${_months[m.month - 1]} ${m.year}';
 
   String _dayLabel(DateTime d) =>
       '${_months[d.month - 1].substring(0, 3)} ${d.day}, ${d.year}';
