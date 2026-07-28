@@ -43,6 +43,8 @@ dependencies:
   flutter_timezone: ^5.1.0
   shared_preferences: ^2.5.5
   file_picker: ^11.0.2
+  path_provider: ^2.1.6
+  share_plus: ^12.0.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -64,6 +66,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/images/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

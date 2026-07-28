@@ -1,9 +1,9 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'api.dart';
+import 'file_share.dart';
 
 /// Builds, saves and opens a one-page emergency summary for [patient] - the
 /// essentials a first responder needs, the same framing as the app's own
@@ -27,11 +27,13 @@ Future<void> exportPatientSummary(BuildContext context, Map<String, dynamic> pat
       allergies: allergies,
       medications: medications,
     );
-    final path = await _saveAndOpen(bytes, patient['full_name'] as String? ?? 'patient');
+    final saved = await _saveAndOpen(bytes, patient['full_name'] as String? ?? 'patient');
 
     if (!context.mounted) return;
     Navigator.of(context, rootNavigator: true).pop(); // close the spinner
-    messenger.showSnackBar(SnackBar(content: Text('Saved to $path')));
+    messenger.showSnackBar(SnackBar(
+      content: Text(saved.shared ? 'Emergency summary ready to share' : 'Saved to ${saved.path}'),
+    ));
   } catch (e) {
     if (!context.mounted) return;
     Navigator.of(context, rootNavigator: true).pop();
@@ -66,7 +68,7 @@ Future<void> exportPrescription(BuildContext context, Map<String, dynamic> patie
       medications: items,
       prescriber: MedThruApi.instance.doctorName ?? 'Attending doctor',
     );
-    final path = await _saveAndOpen(
+    final saved = await _saveAndOpen(
       bytes,
       patient['full_name'] as String? ?? 'patient',
       kind: 'prescription',
@@ -74,7 +76,9 @@ Future<void> exportPrescription(BuildContext context, Map<String, dynamic> patie
 
     if (!context.mounted) return;
     Navigator.of(context, rootNavigator: true).pop();
-    messenger.showSnackBar(SnackBar(content: Text('Saved to $path')));
+    messenger.showSnackBar(SnackBar(
+      content: Text(saved.shared ? 'Prescription ready to share' : 'Saved to ${saved.path}'),
+    ));
   } catch (e) {
     if (!context.mounted) return;
     Navigator.of(context, rootNavigator: true).pop();
@@ -310,22 +314,12 @@ pw.Widget _row(String label, String value) => pw.Padding(
       ),
     );
 
-/// Writes the PDF to the user's Downloads folder (falling back to their
-/// home directory) and opens it with the OS default viewer, so printing
-/// happens through that app rather than a bundled print dialog.
-Future<String> _saveAndOpen(Uint8List bytes, String patientName, {String kind = 'summary'}) async {
-  final home = Platform.environment['USERPROFILE'] ?? Directory.current.path;
-  var dir = Directory('$home\\Downloads');
-  if (!await dir.exists()) {
-    dir = Directory(home);
-  }
-
+/// Writes the PDF out and hands it to the OS — opened with the default viewer
+/// on desktop (so printing happens there), or offered through the share sheet
+/// on Android/iOS. See `file_share.dart` for the platform split.
+Future<SavedExport> _saveAndOpen(Uint8List bytes, String patientName, {String kind = 'summary'}) async {
   final safeName = patientName.replaceAll(RegExp(r'[^A-Za-z0-9 _-]'), '').trim();
   final fileName = 'medic-$kind-${safeName.isEmpty ? 'patient' : safeName}-'
       '${DateTime.now().millisecondsSinceEpoch}.pdf';
-  final file = File('${dir.path}\\$fileName');
-  await file.writeAsBytes(bytes);
-
-  await Process.start('cmd', ['/c', 'start', '""', file.path], runInShell: true);
-  return file.path;
+  return saveAndOpen(bytes, fileName, mimeType: 'application/pdf');
 }
