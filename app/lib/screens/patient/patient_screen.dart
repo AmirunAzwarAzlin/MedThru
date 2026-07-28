@@ -11,6 +11,9 @@ import 'edit_profile_screen.dart';
 import '../doctor/audit_screen.dart';
 import '../health_records/add_reading_screen.dart';
 import 'appointments_screen.dart';
+import 'appointment_calendar.dart';
+import 'activity_recap.dart';
+import 'consistency_heatmap.dart';
 import 'care_plan_screen.dart';
 import 'clinical_updates_screen.dart';
 import '../messages/conversation_screen.dart';
@@ -376,6 +379,67 @@ class _PatientScreenState extends State<PatientScreen>
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
+  /// The tab strip, with the little mascot tucked in right after the
+  /// Settings tab. Wrapped so the tabs and cat sit together, centred.
+  PreferredSizeWidget _tabBarWithMascot(BuildContext context) {
+    final tabBar = TabBar(
+      controller: _tabs,
+      isScrollable: true,
+      tabAlignment: TabAlignment.center,
+      dividerColor: Colors.transparent,
+      indicator: BoxDecoration(
+        color: MedThruTheme.blue,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      indicatorSize: TabBarIndicatorSize.label,
+      indicatorPadding: const EdgeInsets.symmetric(vertical: 6),
+      labelPadding: const EdgeInsets.symmetric(horizontal: 16),
+      splashBorderRadius: BorderRadius.circular(20),
+      labelColor: Colors.white,
+      unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
+      labelStyle: const TextStyle(
+        fontWeight: FontWeight.w700,
+        fontSize: 13,
+      ),
+      unselectedLabelStyle: const TextStyle(
+        fontWeight: FontWeight.w600,
+        fontSize: 13,
+      ),
+      tabs: const [
+        Tab(icon: Icon(Icons.home_outlined), text: 'Home'),
+        Tab(icon: Icon(Icons.person_outline), text: 'Profile'),
+        Tab(icon: Icon(Icons.emergency_outlined), text: 'Emergency'),
+        Tab(icon: Icon(Icons.settings_outlined), text: 'Settings'),
+      ],
+    );
+    return PreferredSize(
+      preferredSize: tabBar.preferredSize,
+      // Mirror the body's 640-wide centred column so the mascot can be pinned
+      // to the same right edge as the identity card's Refresh button
+      // (16px list padding + 18px card padding in from the column edge).
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              tabBar,
+              Positioned(
+                right: 34,
+                child: Image.asset(
+                  'assets/images/cat.png',
+                  width: 30,
+                  height: 30,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDoctor = MedThruApi.instance.isLoggedIn;
@@ -384,6 +448,7 @@ class _PatientScreenState extends State<PatientScreen>
     final tabs = [
       _HomeTab(
         patient: _patient,
+        cardToken: widget.cardToken,
         val: _val,
         has: _has,
         refreshing: _refreshing,
@@ -420,9 +485,17 @@ class _PatientScreenState extends State<PatientScreen>
       ),
     ];
 
+    // In a patient's own phone-login ("me") session there's nothing to go
+    // back to — Home is the root — so drop the back arrow and let them leave
+    // via Sign out instead. Doctors and card-tap sessions keep it to return.
+    final isSelfSession = widget.cardToken == 'me';
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(_val('full_name')),
+        automaticallyImplyLeading: !isSelfSession,
+        // A doctor or card-tap session needs to see whose record is open; a
+        // patient's own session doesn't need their name echoed back to them.
+        title: isSelfSession ? null : Text(_val('full_name')),
         actions: [
           if (isDoctor) ...[
             if (isAdmin)
@@ -446,36 +519,7 @@ class _PatientScreenState extends State<PatientScreen>
             ),
           ],
         ],
-        bottom: TabBar(
-          controller: _tabs,
-          isScrollable: true,
-          tabAlignment: TabAlignment.center,
-          dividerColor: Colors.transparent,
-          indicator: BoxDecoration(
-            color: MedThruTheme.blue,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          indicatorSize: TabBarIndicatorSize.label,
-          indicatorPadding: const EdgeInsets.symmetric(vertical: 6),
-          labelPadding: const EdgeInsets.symmetric(horizontal: 16),
-          splashBorderRadius: BorderRadius.circular(20),
-          labelColor: Colors.white,
-          unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
-          labelStyle: const TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 13,
-          ),
-          unselectedLabelStyle: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-          ),
-          tabs: const [
-            Tab(icon: Icon(Icons.home_outlined), text: 'Home'),
-            Tab(icon: Icon(Icons.person_outline), text: 'Profile'),
-            Tab(icon: Icon(Icons.emergency_outlined), text: 'Emergency'),
-            Tab(icon: Icon(Icons.settings_outlined), text: 'Settings'),
-          ],
-        ),
+        bottom: _tabBarWithMascot(context),
       ),
       body: BoundedBody(
         maxWidth: 640,
@@ -503,6 +547,7 @@ class _PatientScreenState extends State<PatientScreen>
 class _HomeTab extends StatefulWidget {
   const _HomeTab({
     required this.patient,
+    required this.cardToken,
     required this.val,
     required this.has,
     required this.refreshing,
@@ -517,6 +562,7 @@ class _HomeTab extends StatefulWidget {
   });
 
   final Map<String, dynamic> patient;
+  final String cardToken;
   final String Function(String) val;
   final bool Function(String) has;
   final bool refreshing;
@@ -524,7 +570,7 @@ class _HomeTab extends StatefulWidget {
   final Future<void> Function() onAddReading;
   final VoidCallback onOpenEmergency;
   final VoidCallback onOpenCarePlan;
-  final VoidCallback onOpenAppointments;
+  final Future<void> Function() onOpenAppointments;
   final Future<void> Function() onOpenHealthRecords;
   final VoidCallback onOpenUpdates;
   final VoidCallback onOpenMessages;
@@ -588,6 +634,26 @@ class _HomeTabState extends State<_HomeTab> {
         if (has('allergies'))
           _AllergyBanner(allergies: patient['allergies'] as String),
 
+        // "Your activity": weekly recap + consistency heatmap, both derived
+        // from the same readings future as the vitals snapshot below.
+        FutureBuilder<List<Map<String, dynamic>>>(
+          future: _readings,
+          builder: (context, snap) {
+            final readings = snap.data;
+            if (readings == null) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: Column(
+                children: [
+                  ActivityRecapCard(readings: readings),
+                  const SizedBox(height: 12),
+                  ConsistencyHeatmapCard(readings: readings),
+                ],
+              ),
+            );
+          },
+        ),
+
         FutureBuilder<List<Map<String, dynamic>>>(
           future: _readings,
           builder: (context, snap) {
@@ -603,6 +669,14 @@ class _HomeTabState extends State<_HomeTab> {
             );
           },
         ),
+
+        // Month-at-a-glance calendar of the patient's appointments; the full
+        // Appointments screen (book / cancel / remind) is one tap away.
+        AppointmentCalendarCard(
+          cardToken: widget.cardToken,
+          onOpenAll: widget.onOpenAppointments,
+        ),
+        const SizedBox(height: 18),
 
         // Quick actions, two per row. (Emergency lives in the band above, so
         // it isn't repeated here.)
@@ -667,40 +741,6 @@ class _HomeTabState extends State<_HomeTab> {
           icon: const Icon(Icons.add),
           label: const Text('Add a reading'),
         ),
-
-        // The full medical fields still live here; the dashboard above is a
-        // shortcut layer, not a replacement for the record.
-        const SizedBox(height: 26),
-        Text(
-          'MEDICAL DETAILS',
-          style: TextStyle(
-            fontSize: 12,
-            letterSpacing: 1,
-            fontWeight: FontWeight.w700,
-            color: scheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 8),
-        FieldCard(
-          label: 'Blood type',
-          value: val('blood_type'),
-          icon: Icons.bloodtype_outlined,
-        ),
-        FieldCard(
-          label: 'Allergies',
-          value: val('allergies'),
-          icon: Icons.warning_amber_outlined,
-        ),
-        FieldCard(
-          label: 'Medications',
-          value: val('medications'),
-          icon: Icons.medication_outlined,
-        ),
-        FieldCard(
-          label: 'Conditions',
-          value: val('conditions'),
-          icon: Icons.monitor_heart_outlined,
-        ),
       ],
     );
   }
@@ -728,7 +768,7 @@ class _ProfileTab extends StatelessWidget {
         _TabHeading(
           icon: Icons.person_outline,
           title: 'Profile',
-          subtitle: 'Personal details.',
+          subtitle: 'Personal and medical details.',
         ),
         FieldCard(
           label: 'Full name',
@@ -748,6 +788,37 @@ class _ProfileTab extends StatelessWidget {
             label: const Text('Edit name / date of birth'),
           ),
         ],
+        const SizedBox(height: 26),
+        Text(
+          'MEDICAL DETAILS',
+          style: TextStyle(
+            fontSize: 12,
+            letterSpacing: 1,
+            fontWeight: FontWeight.w700,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        FieldCard(
+          label: 'Blood type',
+          value: val('blood_type'),
+          icon: Icons.bloodtype_outlined,
+        ),
+        FieldCard(
+          label: 'Allergies',
+          value: val('allergies'),
+          icon: Icons.warning_amber_outlined,
+        ),
+        FieldCard(
+          label: 'Medications',
+          value: val('medications'),
+          icon: Icons.medication_outlined,
+        ),
+        FieldCard(
+          label: 'Conditions',
+          value: val('conditions'),
+          icon: Icons.monitor_heart_outlined,
+        ),
       ],
     );
   }
