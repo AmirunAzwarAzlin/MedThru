@@ -13,7 +13,6 @@ import '../health_records/add_reading_screen.dart';
 import 'appointments_screen.dart';
 import 'appointment_calendar.dart';
 import 'activity_recap.dart';
-import 'consistency_heatmap.dart';
 import 'care_plan_screen.dart';
 import 'clinical_updates_screen.dart';
 import '../messages/conversation_screen.dart';
@@ -634,8 +633,9 @@ class _HomeTabState extends State<_HomeTab> {
         if (has('allergies'))
           _AllergyBanner(allergies: patient['allergies'] as String),
 
-        // "Your activity": weekly recap + consistency heatmap, both derived
-        // from the same readings future as the vitals snapshot below.
+        // "Your activity": the weekly recap. Day-by-day logging activity lives
+        // on the appointment calendar below (each day shaded by readings-that-
+        // day), so there's no separate heatmap card here.
         FutureBuilder<List<Map<String, dynamic>>>(
           future: _readings,
           builder: (context, snap) {
@@ -643,13 +643,7 @@ class _HomeTabState extends State<_HomeTab> {
             if (readings == null) return const SizedBox.shrink();
             return Padding(
               padding: const EdgeInsets.only(bottom: 18),
-              child: Column(
-                children: [
-                  ActivityRecapCard(readings: readings),
-                  const SizedBox(height: 12),
-                  ConsistencyHeatmapCard(readings: readings),
-                ],
-              ),
+              child: ActivityRecapCard(readings: readings),
             );
           },
         ),
@@ -670,11 +664,16 @@ class _HomeTabState extends State<_HomeTab> {
           },
         ),
 
-        // Month-at-a-glance calendar of the patient's appointments; the full
-        // Appointments screen (book / cancel / remind) is one tap away.
-        AppointmentCalendarCard(
-          cardToken: widget.cardToken,
-          onOpenAll: widget.onOpenAppointments,
+        // Month-at-a-glance calendar: appointments as dots, each day shaded by
+        // that day's logging activity. The full Appointments screen (book /
+        // cancel / remind) is one tap away.
+        FutureBuilder<List<Map<String, dynamic>>>(
+          future: _readings,
+          builder: (context, snap) => AppointmentCalendarCard(
+            cardToken: widget.cardToken,
+            readings: snap.data ?? const [],
+            onOpenAll: widget.onOpenAppointments,
+          ),
         ),
         const SizedBox(height: 18),
 

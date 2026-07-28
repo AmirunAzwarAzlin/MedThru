@@ -1,21 +1,29 @@
 import 'package:flutter/material.dart';
+import '../../activity_summary.dart';
 import '../../api.dart';
 import '../../theme.dart';
 import '../../widgets.dart' show formatAppointmentTime, StatusPill;
 
-/// A month-at-a-glance calendar on the patient Home tab. Marks the days that
-/// carry an appointment and, when a marked day is tapped, lists what's on it.
-/// Read-only: booking, cancelling and reminders all live on the full
-/// Appointments screen, reached with [onOpenAll] — this is a glanceable
+/// A month-at-a-glance calendar on the patient Home tab. Each day is shaded by
+/// how many readings were logged that day (a green heatmap) and marked with a
+/// dot when it carries an appointment; tapping a day with an appointment lists
+/// what's on it. Read-only: booking, cancelling and reminders all live on the
+/// full Appointments screen, reached with [onOpenAll] — this is a glanceable
 /// overview, not a replacement for it.
 class AppointmentCalendarCard extends StatefulWidget {
   const AppointmentCalendarCard({
     super.key,
     required this.cardToken,
+    required this.readings,
     required this.onOpenAll,
   });
 
   final String cardToken;
+
+  /// The patient's readings, used to shade each day by logging activity. The
+  /// card computes per-day counts itself; passing an empty list just leaves the
+  /// grid unshaded.
+  final List<Map<String, dynamic>> readings;
 
   /// Opens the full Appointments screen and completes when it's popped, so the
   /// calendar can refresh against any booking or cancellation made there.
@@ -37,6 +45,10 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
 
   /// Appointments grouped by their calendar day (year-month-day at midnight).
   Map<DateTime, List<Map<String, dynamic>>> _byDay = {};
+
+  /// Readings logged per calendar day, recomputed from [widget.readings] each
+  /// build — it drives the green day shading.
+  Map<DateTime, int> _counts = const {};
 
   @override
   void initState() {
@@ -93,6 +105,7 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final today = DateTime.now();
+    _counts = dailyReadingCounts(widget.readings);
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -109,7 +122,68 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
           _weekdayRow(scheme),
           const SizedBox(height: 4),
           _grid(scheme, today),
+          _legend(scheme),
           _details(scheme),
+        ],
+      ),
+    );
+  }
+
+  /// Graded green fill for a day's logging intensity; null for an unlogged day.
+  Color? _heatColor(DateTime date) {
+    final level = heatLevel(_counts[date] ?? 0);
+    if (level == 0) return null;
+    return MedThruTheme.iconGreen
+        .withValues(alpha: const [0.0, 0.16, 0.34, 0.55][level]);
+  }
+
+  /// A compact key: the green logging scale, and what the appointment dot means.
+  Widget _legend(ColorScheme scheme) {
+    final labelStyle = TextStyle(fontSize: 11, color: scheme.onSurfaceVariant);
+    Widget swatch(double alpha) => Container(
+          width: 11,
+          height: 11,
+          margin: const EdgeInsets.symmetric(horizontal: 1.5),
+          decoration: BoxDecoration(
+            color: alpha == 0.0
+                ? scheme.surfaceContainerHighest
+                : MedThruTheme.iconGreen.withValues(alpha: alpha),
+            borderRadius: BorderRadius.circular(3),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 6,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Logged', style: labelStyle),
+              const SizedBox(width: 6),
+              swatch(0.0),
+              swatch(0.16),
+              swatch(0.34),
+              swatch(0.55),
+            ],
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: MedThruTheme.blue,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text('appointment', style: labelStyle),
+            ],
+          ),
         ],
       ),
     );
@@ -215,12 +289,15 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
         alignment: Alignment.center,
         margin: const EdgeInsets.all(2),
         decoration: BoxDecoration(
-          color: isSelected
-              ? MedThruTheme.blue
-              : isToday
-                  ? MedThruTheme.blue.withValues(alpha: 0.12)
-                  : null,
+          // Background carries the logging heat; today and the selected day are
+          // drawn as a blue ring so the shading still shows through.
+          color: _heatColor(date),
           borderRadius: BorderRadius.circular(10),
+          border: isSelected
+              ? Border.all(color: MedThruTheme.blue, width: 2)
+              : isToday
+                  ? Border.all(color: MedThruTheme.blue, width: 1.4)
+                  : null,
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -229,12 +306,9 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
               '${date.day}',
               style: TextStyle(
                 fontSize: 13,
-                fontWeight: isToday ? FontWeight.w800 : FontWeight.w500,
-                color: isSelected
-                    ? Colors.white
-                    : isToday
-                        ? MedThruTheme.blue
-                        : scheme.onSurface,
+                fontWeight:
+                    (isToday || isSelected) ? FontWeight.w800 : FontWeight.w500,
+                color: isToday ? MedThruTheme.blue : scheme.onSurface,
               ),
             ),
             const SizedBox(height: 2),
@@ -246,9 +320,7 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
                       height: 5,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: isSelected
-                            ? Colors.white
-                            : _dotColor(appts),
+                        color: _dotColor(appts),
                       ),
                     )
                   : null,
