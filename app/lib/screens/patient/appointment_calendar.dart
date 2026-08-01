@@ -16,9 +16,15 @@ class AppointmentCalendarCard extends StatefulWidget {
     required this.cardToken,
     required this.readings,
     required this.onOpenAll,
+    this.today,
   });
 
   final String cardToken;
+
+  /// The day treated as "today": which month opens, and which cell gets the
+  /// today ring. Defaults to the real clock; tests pin it so the rendered
+  /// month — and the golden of it — doesn't change with the calendar.
+  final DateTime? today;
 
   /// The patient's readings, used to shade each day by logging activity. The
   /// card computes per-day counts itself; passing an empty list just leaves the
@@ -53,7 +59,7 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
+    final now = widget.today ?? DateTime.now();
     _month = DateTime(now.year, now.month);
     _load();
   }
@@ -106,7 +112,7 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final today = DateTime.now();
+    final today = widget.today ?? DateTime.now();
     _counts = dailyReadingCounts(widget.readings);
 
     return Container(
@@ -485,7 +491,7 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
 
   /// The soonest appointment at or after now, ignoring closed ones.
   Map<String, dynamic>? _nextUpcoming() {
-    final now = DateTime.now();
+    final now = widget.today ?? DateTime.now();
     Map<String, dynamic>? best;
     DateTime? bestAt;
     for (final list in _byDay.values) {

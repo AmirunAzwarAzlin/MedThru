@@ -17,6 +17,18 @@ final _patient = <String, dynamic>{
   'card_id': 1,
 };
 
+/// Scroll the Home dashboard's Health Records tile into view, then open it.
+/// The tile sits below the fold under the emergency band, the activity recap
+/// and the month calendar — and the calendar's height changes with the month,
+/// so no fixed surface size keeps the tile reliably on screen.
+Future<void> _openHealthRecords(WidgetTester tester) async {
+  final tile = find.text('Health Records').first;
+  await tester.ensureVisible(tile);
+  await tester.pumpAndSettle();
+  await tester.tap(tile);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUp(() => MedThruApi.instance.debugSetSession());
   tearDown(() => MedThruApi.instance.debugSetSession());
@@ -30,8 +42,7 @@ void main() {
     ));
     await tester.pump(const Duration(milliseconds: 100));
 
-    await tester.tap(find.text('Health Records').first);
-    await tester.pumpAndSettle();
+    await _openHealthRecords(tester);
 
     expect(find.text('Allergies & intolerances'), findsOneWidget);
     expect(find.text('Anthropometry'), findsOneWidget);
@@ -45,8 +56,6 @@ void main() {
   });
 
   testWidgets('Tapping a category opens its own page with an Add action', (tester) async {
-    // A tall surface so the Home dashboard's Health Records tile sits within
-    // the viewport (the emergency band + vitals push it past a 600px height).
     await tester.binding.setSurfaceSize(const Size(500, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(
@@ -54,8 +63,7 @@ void main() {
     ));
     await tester.pump(const Duration(milliseconds: 100));
 
-    await tester.tap(find.text('Health Records').first);
-    await tester.pumpAndSettle();
+    await _openHealthRecords(tester);
 
     // "Allergies & intolerances" appears twice once pushed (menu row title
     // is gone since it's a new route, but the AppBar title matches it), so

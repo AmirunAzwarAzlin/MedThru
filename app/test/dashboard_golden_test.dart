@@ -25,6 +25,11 @@ final _patient = <String, dynamic>{
   'updated_at': '2026-07-10 10:08:00',
 };
 
+/// Pinned so the Home calendar always renders the same month. Without this the
+/// goldens encode whatever month the suite happened to run in, and go red on
+/// the 1st.
+final _today = DateTime(2026, 7, 21);
+
 void main() {
   setUp(() => MedThruApi.instance.debugSetSession());
 
@@ -37,7 +42,11 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         theme: theme,
         debugShowCheckedModeBanner: false,
-        home: PatientScreen(patient: _patient, cardToken: 'fake-token'),
+        home: PatientScreen(
+          patient: _patient,
+          cardToken: 'fake-token',
+          today: _today,
+        ),
       ));
       // The Readings/Notes futures will fail (no server); let them settle.
       await tester.pump(const Duration(milliseconds: 100));

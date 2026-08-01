@@ -27,7 +27,13 @@ class PatientScreen extends StatefulWidget {
     required this.patient,
     required this.cardToken,
     this.unlockPassword,
+    this.today,
   });
+
+  /// Pins the day the Home tab's calendar treats as "today". Real sessions
+  /// leave this null and follow the clock; tests set it so the dashboard
+  /// renders the same month every run.
+  final DateTime? today;
 
   final Map<String, dynamic> patient;
 
@@ -458,6 +464,7 @@ class _PatientScreenState extends State<PatientScreen>
         onOpenHealthRecords: _openHealthRecords,
         onOpenUpdates: () => _openUpdates(isDoctor),
         onOpenMessages: _openMessages,
+        today: widget.today,
       ),
       _ProfileTab(
         val: _val,
@@ -557,6 +564,7 @@ class _HomeTab extends StatefulWidget {
     required this.onOpenHealthRecords,
     required this.onOpenUpdates,
     required this.onOpenMessages,
+    this.today,
   });
 
   final Map<String, dynamic> patient;
@@ -572,6 +580,7 @@ class _HomeTab extends StatefulWidget {
   final Future<void> Function() onOpenHealthRecords;
   final VoidCallback onOpenUpdates;
   final VoidCallback onOpenMessages;
+  final DateTime? today;
 
   @override
   State<_HomeTab> createState() => _HomeTabState();
@@ -673,6 +682,7 @@ class _HomeTabState extends State<_HomeTab> {
             cardToken: widget.cardToken,
             readings: snap.data ?? const [],
             onOpenAll: widget.onOpenAppointments,
+            today: widget.today,
           ),
         ),
         const SizedBox(height: 18),
