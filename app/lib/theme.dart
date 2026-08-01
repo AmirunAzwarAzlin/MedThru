@@ -3,22 +3,23 @@ import 'package:flutter/material.dart';
 /// MedThru brand palette + themes, kept in one place so every screen stays
 /// visually consistent.
 ///
-/// Direction — "cool clinic": a calm, cool light-grey canvas with crisp white
-/// cards, heavy near-black display type, a periwinkle-purple brand accent and a
-/// lime highlight for positive figures — the palette of the reference
-/// dashboard. Red stays reserved for the single emergency affordance. Calm and
-/// reassuring at rest; the emergency band is the one loud thing.
+/// Direction — "warm calm": a soft, warm off-white canvas with crisp white
+/// cards that read as gently floating (whisper-soft warm hairlines rather than
+/// hard borders), warm-charcoal display type, a periwinkle-purple brand accent
+/// and a lime highlight for positive figures. Red stays reserved for the single
+/// emergency affordance. Friendly and reassuring at rest; the emergency band is
+/// the one loud thing.
 ///
 /// The app is light-first. The dark theme is kept coherent as a fallback.
 class MedThruTheme {
-  // --- Cool light surfaces (the star) ---
-  static const cream = Color(0xFFEDEFF3); // scaffold: cool light grey
+  // --- Warm light surfaces (the star) ---
+  static const cream = Color(0xFFF4F2EE); // scaffold: warm off-white paper
   static const card = Color(0xFFFFFFFF); // cards
-  static const sand = Color(0xFFE4E7EE); // secondary tiles / inputs
-  static const ink = Color(0xFF1B1B2A); // cool near-black text
-  static const inkMuted = Color(0xFF6E7286); // muted body text
-  static const hairlineL = Color(0xFFE2E5EC); // card borders
-  static const lineL = Color(0xFFCBD0DC); // stronger outlines
+  static const sand = Color(0xFFEBE7E0); // secondary tiles / inputs (warm)
+  static const ink = Color(0xFF272430); // warm charcoal text
+  static const inkMuted = Color(0xFF787280); // warm muted body text
+  static const hairlineL = Color(0xFFEAE5DD); // whisper-soft warm card borders
+  static const lineL = Color(0xFFD6D0C6); // stronger warm outlines
 
   // --- Dark surfaces (fallback theme) ---
   static const bg = Color(0xFF0E0E18);
@@ -83,6 +84,15 @@ class MedThruTheme {
   static const tileRed = Color(0xFFF6DAD5);
   static const tilePurple = Color(0xFFE6E2FB); // pale purple
 
+  // A soft, warm two-layer shadow that lifts white cards off the paper canvas
+  // — an ambient blur plus a tight contact shadow. Deliberately faint (~6% /
+  // 4%) so cards read as gently floating, not dropped. Barely visible on the
+  // dark fallback, which separates cards by surface colour instead.
+  static const softShadow = <BoxShadow>[
+    BoxShadow(color: Color(0x0F171013), blurRadius: 16, offset: Offset(0, 6)),
+    BoxShadow(color: Color(0x0A171013), blurRadius: 3, offset: Offset(0, 1)),
+  ];
+
   static ThemeData light() => _build(_lightScheme);
   static ThemeData dark() => _build(_darkScheme);
 
@@ -105,9 +115,9 @@ class MedThruTheme {
     onSurface: ink,
     surfaceContainerLowest: Colors.white,
     surfaceContainerLow: card, // cards
-    surfaceContainer: Color(0xFFF4F6FA),
+    surfaceContainer: Color(0xFFF0EDE7),
     surfaceContainerHigh: sand,
-    surfaceContainerHighest: Color(0xFFD9DDE7),
+    surfaceContainerHighest: Color(0xFFE4DFD6),
     onSurfaceVariant: inkMuted,
     outlineVariant: hairlineL,
     outline: lineL,

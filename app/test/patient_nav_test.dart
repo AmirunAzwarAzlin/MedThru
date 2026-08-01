@@ -43,9 +43,18 @@ void main() {
     ));
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('Appointments'), findsOneWidget);
     // "Profile" only appears once now: the tab itself, not a dashboard tile.
     expect(find.text('Profile'), findsOneWidget);
+
+    // The quick-action tiles sit below the fold, under the activity recap and
+    // the month calendar, and the dashboard is a lazy ListView — so scroll the
+    // Appointments tile into view rather than assuming it is already built.
+    await tester.dragUntilVisible(
+      find.text('Appointments'),
+      find.byType(ListView),
+      const Offset(0, -300),
+    );
+    expect(find.text('Appointments'), findsOneWidget);
   });
 
   testWidgets('Settings tab offers Sign out for a phone session, not a real card',

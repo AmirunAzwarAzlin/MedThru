@@ -44,7 +44,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: CenteredMessage(
                   icon: Icons.error_outline,
                   title: 'Could not load reports',
-                  subtitle: snap.error.toString().replaceFirst('Exception: ', ''),
+                  subtitle: snap.error.toString().replaceFirst(
+                    'Exception: ',
+                    '',
+                  ),
                   action: OutlinedButton.icon(
                     onPressed: () => setState(_load),
                     icon: const Icon(Icons.refresh),
@@ -93,8 +96,12 @@ class _Scrollable extends StatelessWidget {
   const _Scrollable({required this.child});
   final Widget child;
   @override
-  Widget build(BuildContext context) =>
-      ListView(children: [const SizedBox(height: 160), Center(child: child)]);
+  Widget build(BuildContext context) => ListView(
+    children: [
+      const SizedBox(height: 160),
+      Center(child: child),
+    ],
+  );
 }
 
 class _Panel extends StatelessWidget {
@@ -111,17 +118,20 @@ class _Panel extends StatelessWidget {
         color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: scheme.outlineVariant),
+        boxShadow: MedThruTheme.softShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: TextStyle(
-                fontSize: 15.5,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.2,
-                color: scheme.onSurface,
-              )),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 15.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.2,
+              color: scheme.onSurface,
+            ),
+          ),
           const SizedBox(height: 16),
           child,
         ],
@@ -151,8 +161,10 @@ class _WeeklyChart extends StatelessWidget {
       grandCancelled += (w['cancelled'] as num?)?.toInt() ?? 0;
     }
     if (weeks.isEmpty) {
-      return Text('No appointments in this period.',
-          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13));
+      return Text(
+        'No appointments in this period.',
+        style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+      );
     }
     return Column(
       children: [
@@ -180,9 +192,17 @@ class _WeeklyChart extends StatelessWidget {
         const SizedBox(height: 12),
         Row(
           children: [
-            _LegendDot(color: MedThruTheme.coral, label: 'Completed', value: grandCompleted),
+            _LegendDot(
+              color: MedThruTheme.coral,
+              label: 'Completed',
+              value: grandCompleted,
+            ),
             const SizedBox(width: 20),
-            _LegendDot(color: scheme.outline, label: 'Cancelled', value: grandCancelled),
+            _LegendDot(
+              color: scheme.outline,
+              label: 'Cancelled',
+              value: grandCancelled,
+            ),
           ],
         ),
       ],
@@ -207,48 +227,60 @@ class _WeekBar extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        Text(total == 0 ? '' : '$total',
-            style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
-                color: scheme.onSurfaceVariant)),
+        Text(
+          total == 0 ? '' : '$total',
+          style: TextStyle(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w700,
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
         const SizedBox(height: 2),
         Expanded(
-          child: LayoutBuilder(builder: (context, c) {
-            final barH = maxTotal == 0 ? 0.0 : (total / maxTotal) * c.maxHeight;
-            final completedH = total == 0 ? 0.0 : (completed / total) * barH;
-            final cancelledH = barH - completedH;
-            return Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (cancelledH > 0)
-                  Container(
-                    height: cancelledH,
-                    decoration: BoxDecoration(
-                      color: scheme.outline,
-                      borderRadius:
-                          const BorderRadius.vertical(top: Radius.circular(4)),
+          child: LayoutBuilder(
+            builder: (context, c) {
+              final barH = maxTotal == 0
+                  ? 0.0
+                  : (total / maxTotal) * c.maxHeight;
+              final completedH = total == 0 ? 0.0 : (completed / total) * barH;
+              final cancelledH = barH - completedH;
+              return Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (cancelledH > 0)
+                    Container(
+                      height: cancelledH,
+                      decoration: BoxDecoration(
+                        color: scheme.outline,
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(4),
+                        ),
+                      ),
                     ),
-                  ),
-                if (completedH > 0)
-                  Container(
-                    height: completedH,
-                    decoration: BoxDecoration(
-                      color: MedThruTheme.coral,
-                      borderRadius: cancelledH > 0
-                          ? null
-                          : const BorderRadius.vertical(top: Radius.circular(4)),
+                  if (completedH > 0)
+                    Container(
+                      height: completedH,
+                      decoration: BoxDecoration(
+                        color: MedThruTheme.coral,
+                        borderRadius: cancelledH > 0
+                            ? null
+                            : const BorderRadius.vertical(
+                                top: Radius.circular(4),
+                              ),
+                      ),
                     ),
-                  ),
-              ],
-            );
-          }),
+                ],
+              );
+            },
+          ),
         ),
         const SizedBox(height: 6),
-        Text(label,
-            maxLines: 1,
-            overflow: TextOverflow.clip,
-            style: TextStyle(fontSize: 9, color: scheme.onSurfaceVariant)),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.clip,
+          style: TextStyle(fontSize: 9, color: scheme.onSurfaceVariant),
+        ),
       ],
     );
   }
@@ -266,8 +298,10 @@ class _TopConditions extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     if (conditions.isEmpty) {
-      return Text('No diagnoses recorded yet.',
-          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13));
+      return Text(
+        'No diagnoses recorded yet.',
+        style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+      );
     }
     final maxCount = conditions
         .map((c) => (c['count'] as num?)?.toInt() ?? 0)
@@ -290,7 +324,13 @@ class _TopConditions extends StatelessWidget {
 // Status breakdown — horizontal bars, coloured per status
 // ---------------------------------------------------------------------------
 
-const _statusOrder = ['requested', 'confirmed', 'completed', 'cancelled', 'rejected'];
+const _statusOrder = [
+  'requested',
+  'confirmed',
+  'completed',
+  'cancelled',
+  'rejected',
+];
 const _statusLabels = {
   'requested': 'Pending',
   'confirmed': 'Confirmed',
@@ -327,11 +367,14 @@ class _StatusBreakdown extends StatelessWidget {
     }
     final present = _statusOrder.where((s) => (counts[s] ?? 0) > 0).toList();
     if (present.isEmpty) {
-      return Text('No appointments yet.',
-          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13));
+      return Text(
+        'No appointments yet.',
+        style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+      );
     }
-    final maxCount =
-        present.map((s) => counts[s]!).fold<int>(1, (a, b) => a > b ? a : b);
+    final maxCount = present
+        .map((s) => counts[s]!)
+        .fold<int>(1, (a, b) => a > b ? a : b);
     return Column(
       children: [
         for (final s in present)
@@ -393,12 +436,15 @@ class _HBar extends StatelessWidget {
           const SizedBox(width: 10),
           SizedBox(
             width: 26,
-            child: Text('$count',
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: scheme.onSurface)),
+            child: Text(
+              '$count',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: scheme.onSurface,
+              ),
+            ),
           ),
         ],
       ),
@@ -407,7 +453,11 @@ class _HBar extends StatelessWidget {
 }
 
 class _LegendDot extends StatelessWidget {
-  const _LegendDot({required this.color, required this.label, required this.value});
+  const _LegendDot({
+    required this.color,
+    required this.label,
+    required this.value,
+  });
   final Color color;
   final String label;
   final int value;
@@ -419,16 +469,27 @@ class _LegendDot extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-            width: 10,
-            height: 10,
-            decoration:
-                BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
         const SizedBox(width: 8),
-        Text('$value',
-            style: TextStyle(
-                fontSize: 15, fontWeight: FontWeight.w900, color: scheme.onSurface)),
+        Text(
+          '$value',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w900,
+            color: scheme.onSurface,
+          ),
+        ),
         const SizedBox(width: 5),
-        Text(label, style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
+        Text(
+          label,
+          style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+        ),
       ],
     );
   }

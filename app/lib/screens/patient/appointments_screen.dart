@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../api.dart';
+import '../../calendar_export.dart';
 import '../../notifications.dart';
 import '../../theme.dart';
 import '../../widgets.dart';
@@ -179,6 +180,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                       color: scheme.surfaceContainerLow,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: scheme.outlineVariant),
+                      boxShadow: MedThruTheme.softShadow,
                     ),
                     child: Column(
                       children: [
@@ -218,10 +220,22 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                       // reminding about — a pending request might still be
                       // rejected, and a past one has nothing left to remind.
                       remindOn: _reminding.contains(a['id'] as int),
-                      onToggleRemind: a['status'] == 'confirmed' &&
-                              DateTime.parse(a['starts_at'] as String)
-                                  .isAfter(DateTime.now())
+                      onToggleRemind:
+                          a['status'] == 'confirmed' &&
+                              DateTime.parse(
+                                a['starts_at'] as String,
+                              ).isAfter(DateTime.now())
                           ? () => _toggleReminder(a)
+                          : null,
+                      // Exportable while it still holds a slot and hasn't
+                      // happened — no point adding a past or dead one to a
+                      // calendar.
+                      onAddToCalendar:
+                          _cancellable.contains(a['status']) &&
+                              DateTime.parse(
+                                a['starts_at'] as String,
+                              ).isAfter(DateTime.now())
+                          ? () => exportAppointmentToCalendar(context, a)
                           : null,
                     ),
               ],
@@ -239,6 +253,7 @@ class _AppointmentCard extends StatelessWidget {
     this.onCancel,
     this.remindOn = false,
     this.onToggleRemind,
+    this.onAddToCalendar,
   });
 
   final Map<String, dynamic> appt;
@@ -248,6 +263,9 @@ class _AppointmentCard extends StatelessWidget {
   /// Null hides the reminder toggle entirely (past, cancelled, or still
   /// only requested — nothing worth an on-device reminder yet).
   final VoidCallback? onToggleRemind;
+
+  /// Null hides the "Add to calendar" action (past or no-longer-live).
+  final VoidCallback? onAddToCalendar;
 
   @override
   Widget build(BuildContext context) {
@@ -314,16 +332,30 @@ class _AppointmentCard extends StatelessWidget {
                 ),
               ),
             ],
-            if (onToggleRemind != null || onCancel != null) ...[
+            if (onToggleRemind != null ||
+                onAddToCalendar != null ||
+                onCancel != null) ...[
               const SizedBox(height: 6),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 4,
                 children: [
+                  if (onAddToCalendar != null)
+                    TextButton.icon(
+                      onPressed: onAddToCalendar,
+                      icon: const Icon(
+                        Icons.event_available_outlined,
+                        size: 16,
+                      ),
+                      label: const Text('Add to calendar'),
+                    ),
                   if (onToggleRemind != null)
                     TextButton.icon(
                       onPressed: onToggleRemind,
                       icon: Icon(
-                        remindOn ? Icons.notifications_active : Icons.notifications_outlined,
+                        remindOn
+                            ? Icons.notifications_active
+                            : Icons.notifications_outlined,
                         size: 16,
                       ),
                       label: Text(remindOn ? 'Reminder on' : 'Remind me'),
@@ -333,7 +365,9 @@ class _AppointmentCard extends StatelessWidget {
                       onPressed: onCancel,
                       icon: const Icon(Icons.close, size: 16),
                       label: const Text('Cancel'),
-                      style: TextButton.styleFrom(foregroundColor: scheme.error),
+                      style: TextButton.styleFrom(
+                        foregroundColor: scheme.error,
+                      ),
                     ),
                 ],
               ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../api.dart';
+import '../../theme.dart';
 import '../../widgets.dart';
 import 'add_note_screen.dart';
 
@@ -144,6 +145,7 @@ class _NoteCard extends StatelessWidget {
         color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: scheme.outlineVariant),
+        boxShadow: MedThruTheme.softShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -100,10 +100,11 @@ class _DashboardBody extends StatelessWidget {
         .cast<Map<String, dynamic>>();
     final demographics =
         (data['demographics'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final month = (data['appointmentsThisMonth'] as Map?)?.cast<String, dynamic>() ??
+    final month =
+        (data['appointmentsThisMonth'] as Map?)?.cast<String, dynamic>() ??
         const {};
-    final newPatients =
-        ((data['newPatients'] as List?) ?? const []).cast<Map<String, dynamic>>();
+    final newPatients = ((data['newPatients'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>();
 
     final greeting = _Greeting(name: doctorName);
     final schedule = _ScheduleCard(appointments: appts);
@@ -125,11 +126,7 @@ class _DashboardBody extends StatelessWidget {
                 SizedBox(
                   width: 340,
                   child: Column(
-                    children: [
-                      greeting,
-                      const SizedBox(height: 16),
-                      schedule,
-                    ],
+                    children: [greeting, const SizedBox(height: 16), schedule],
                   ),
                 ),
                 const SizedBox(width: 20),
@@ -181,19 +178,21 @@ class _TwoUp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, c) {
-      if (c.maxWidth < 720) {
-        return Column(children: [left, const SizedBox(height: 16), right]);
-      }
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(child: left),
-          const SizedBox(width: 16),
-          Expanded(child: right),
-        ],
-      );
-    });
+    return LayoutBuilder(
+      builder: (context, c) {
+        if (c.maxWidth < 720) {
+          return Column(children: [left, const SizedBox(height: 16), right]);
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: left),
+            const SizedBox(width: 16),
+            Expanded(child: right),
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -281,11 +280,27 @@ class _Greeting extends StatelessWidget {
   static String _todayLabel() {
     final now = DateTime.now();
     const days = [
-      'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
     ];
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]} ${now.year}';
   }
@@ -333,19 +348,21 @@ class _KpiGrid extends StatelessWidget {
       ),
     ];
 
-    return LayoutBuilder(builder: (context, c) {
-      // Four across on very wide areas, otherwise two across.
-      final cols = c.maxWidth >= 720 ? 4 : 2;
-      const gap = 12.0;
-      final tileWidth = (c.maxWidth - gap * (cols - 1)) / cols;
-      return Wrap(
-        spacing: gap,
-        runSpacing: gap,
-        children: [
-          for (final card in cards) SizedBox(width: tileWidth, child: card),
-        ],
-      );
-    });
+    return LayoutBuilder(
+      builder: (context, c) {
+        // Four across on very wide areas, otherwise two across.
+        final cols = c.maxWidth >= 720 ? 4 : 2;
+        const gap = 12.0;
+        final tileWidth = (c.maxWidth - gap * (cols - 1)) / cols;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final card in cards) SizedBox(width: tileWidth, child: card),
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -373,6 +390,7 @@ class _KpiCard extends StatelessWidget {
         color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: scheme.outlineVariant),
+        boxShadow: MedThruTheme.softShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -405,7 +423,10 @@ class _KpiCard extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-                fontSize: 12.5, color: scheme.onSurfaceVariant, height: 1.2),
+              fontSize: 12.5,
+              color: scheme.onSurfaceVariant,
+              height: 1.2,
+            ),
           ),
         ],
       ),
@@ -422,7 +443,9 @@ class _DeltaPill extends StatelessWidget {
     final up = pct >= 0;
     // Positive deltas get the lime pill with dark text — the reference's
     // signature highlight. Negatives use the emergency-red wash.
-    final bg = up ? MedThruTheme.lime : MedThruTheme.danger.withValues(alpha: 0.14);
+    final bg = up
+        ? MedThruTheme.lime
+        : MedThruTheme.danger.withValues(alpha: 0.14);
     final fg = up ? MedThruTheme.ink : MedThruTheme.danger;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -433,11 +456,20 @@ class _DeltaPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(up ? Icons.arrow_upward : Icons.arrow_downward, size: 12, color: fg),
+          Icon(
+            up ? Icons.arrow_upward : Icons.arrow_downward,
+            size: 12,
+            color: fg,
+          ),
           const SizedBox(width: 2),
-          Text('${pct.abs()}%',
-              style: TextStyle(
-                  fontSize: 11.5, fontWeight: FontWeight.w800, color: fg)),
+          Text(
+            '${pct.abs()}%',
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              color: fg,
+            ),
+          ),
         ],
       ),
     );
@@ -464,6 +496,7 @@ class _Panel extends StatelessWidget {
         color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: scheme.outlineVariant),
+        boxShadow: MedThruTheme.softShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -511,23 +544,26 @@ class _ScheduleCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 18),
               child: Row(
                 children: [
-                  Icon(Icons.event_busy_outlined,
-                      size: 18, color: scheme.onSurfaceVariant),
+                  Icon(
+                    Icons.event_busy_outlined,
+                    size: 18,
+                    color: scheme.onSurfaceVariant,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       'No appointments booked for today.',
                       style: TextStyle(
-                          color: scheme.onSurfaceVariant, fontSize: 13.5),
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 13.5,
+                      ),
                     ),
                   ),
                 ],
               ),
             )
           : Column(
-              children: [
-                for (final a in appointments) _ScheduleTile(appt: a),
-              ],
+              children: [for (final a in appointments) _ScheduleTile(appt: a)],
             ),
     );
   }
@@ -591,7 +627,9 @@ class _ScheduleTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          fontSize: 12.5, color: scheme.onSurfaceVariant),
+                        fontSize: 12.5,
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ],
@@ -619,9 +657,10 @@ class _CountBadge extends StatelessWidget {
       child: Text(
         '$count',
         style: const TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w800,
-            color: MedThruTheme.coralDeep),
+          fontSize: 12.5,
+          fontWeight: FontWeight.w800,
+          color: MedThruTheme.coralDeep,
+        ),
       ),
     );
   }
@@ -659,20 +698,18 @@ class _DemographicsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final total = (demographics['total'] as num?)?.toInt() ?? 0;
-    final ages = (demographics['ageBuckets'] as Map?)?.cast<String, dynamic>() ??
+    final ages =
+        (demographics['ageBuckets'] as Map?)?.cast<String, dynamic>() ??
         const {};
-    final gender = (demographics['gender'] as Map?)?.cast<String, dynamic>() ??
-        const {};
+    final gender =
+        (demographics['gender'] as Map?)?.cast<String, dynamic>() ?? const {};
     final female = (gender['female'] as num?)?.toInt() ?? 0;
     final male = (gender['male'] as num?)?.toInt() ?? 0;
     final genderKnown = female + male;
 
     final segments = [
       for (final entry in _ageOrder.entries)
-        (
-          color: entry.value,
-          value: (ages[entry.key] as num?)?.toInt() ?? 0,
-        ),
+        (color: entry.value, value: (ages[entry.key] as num?)?.toInt() ?? 0),
     ];
 
     return _Panel(
@@ -680,9 +717,13 @@ class _DemographicsCard extends StatelessWidget {
       child: total == 0
           ? Padding(
               padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Text('No patients registered yet.',
-                  style: TextStyle(
-                      color: scheme.onSurfaceVariant, fontSize: 13.5)),
+              child: Text(
+                'No patients registered yet.',
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 13.5,
+                ),
+              ),
             )
           : Column(
               children: [
@@ -698,7 +739,7 @@ class _DemographicsCard extends StatelessWidget {
                           painter: _DonutPainter(
                             segments: [
                               for (final s in segments)
-                                (color: s.color, value: s.value.toDouble())
+                                (color: s.color, value: s.value.toDouble()),
                             ],
                             trackColor: scheme.surfaceContainerHigh,
                           ),
@@ -723,16 +764,22 @@ class _DemographicsCard extends StatelessWidget {
                           Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text('$total',
-                                  style: TextStyle(
-                                      fontSize: 34,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: -1,
-                                      color: scheme.onSurface)),
-                              Text('Patients',
-                                  style: TextStyle(
-                                      fontSize: 12.5,
-                                      color: scheme.onSurfaceVariant)),
+                              Text(
+                                '$total',
+                                style: TextStyle(
+                                  fontSize: 34,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -1,
+                                  color: scheme.onSurface,
+                                ),
+                              ),
+                              Text(
+                                'Patients',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
                             ],
                           ),
                       ],
@@ -773,23 +820,31 @@ class _CentreStat extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('$pct%',
-            style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.5,
-                height: 1,
-                color: scheme.onSurface)),
-        Text(label,
-            style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+        Text(
+          '$pct%',
+          style: TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.5,
+            height: 1,
+            color: scheme.onSurface,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+        ),
       ],
     );
   }
 }
 
 class _LegendRow extends StatelessWidget {
-  const _LegendRow(
-      {required this.color, required this.label, required this.count});
+  const _LegendRow({
+    required this.color,
+    required this.label,
+    required this.count,
+  });
   final Color color;
   final String label;
   final int count;
@@ -806,15 +861,19 @@ class _LegendRow extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(label,
-              style:
-                  TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+          ),
         ),
-        Text('$count',
-            style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w800,
-                color: scheme.onSurface)),
+        Text(
+          '$count',
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w800,
+            color: scheme.onSurface,
+          ),
+        ),
       ],
     );
   }
@@ -833,7 +892,9 @@ class _DonutPainter extends CustomPainter {
     final radius = math.min(size.width, size.height) / 2;
     const stroke = 20.0;
     final ringRect = Rect.fromCircle(
-        center: center, radius: radius - stroke / 2);
+      center: center,
+      radius: radius - stroke / 2,
+    );
 
     // Background track.
     final track = Paint()
@@ -879,8 +940,8 @@ class _AppointmentsCard extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final completed = (month['completed'] as num?)?.toInt() ?? 0;
     final cancelled = (month['cancelled'] as num?)?.toInt() ?? 0;
-    final series =
-        ((month['series'] as List?) ?? const []).cast<Map<String, dynamic>>();
+    final series = ((month['series'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>();
 
     return _Panel(
       title: 'Appointments this month',
@@ -891,9 +952,13 @@ class _AppointmentsCard extends StatelessWidget {
             height: 120,
             child: series.isEmpty
                 ? Center(
-                    child: Text('No appointments this month yet.',
-                        style: TextStyle(
-                            color: scheme.onSurfaceVariant, fontSize: 13)),
+                    child: Text(
+                      'No appointments this month yet.',
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 13,
+                      ),
+                    ),
                   )
                 : _BarChart(series: series),
           ),
@@ -901,10 +966,16 @@ class _AppointmentsCard extends StatelessWidget {
           Row(
             children: [
               _LegendDot(
-                  color: MedThruTheme.coral, label: 'Completed', value: completed),
+                color: MedThruTheme.coral,
+                label: 'Completed',
+                value: completed,
+              ),
               const SizedBox(width: 22),
               _LegendDot(
-                  color: scheme.outline, label: 'Cancelled', value: cancelled),
+                color: scheme.outline,
+                label: 'Cancelled',
+                value: cancelled,
+              ),
             ],
           ),
         ],
@@ -914,8 +985,11 @@ class _AppointmentsCard extends StatelessWidget {
 }
 
 class _LegendDot extends StatelessWidget {
-  const _LegendDot(
-      {required this.color, required this.label, required this.value});
+  const _LegendDot({
+    required this.color,
+    required this.label,
+    required this.value,
+  });
   final Color color;
   final String label;
   final int value;
@@ -927,19 +1001,27 @@ class _LegendDot extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-                color: color, borderRadius: BorderRadius.circular(3))),
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
         const SizedBox(width: 8),
-        Text('$value',
-            style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                color: scheme.onSurface)),
+        Text(
+          '$value',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w900,
+            color: scheme.onSurface,
+          ),
+        ),
         const SizedBox(width: 5),
-        Text(label,
-            style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
+        Text(
+          label,
+          style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+        ),
       ],
     );
   }
@@ -954,30 +1036,33 @@ class _BarChart extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     var maxVal = 1;
     for (final d in series) {
-      final total = ((d['completed'] as num?)?.toInt() ?? 0) +
+      final total =
+          ((d['completed'] as num?)?.toInt() ?? 0) +
           ((d['cancelled'] as num?)?.toInt() ?? 0);
       if (total > maxVal) maxVal = total;
     }
-    return LayoutBuilder(builder: (context, c) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (final d in series)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 1.5),
-                child: _StackedBar(
-                  completed: (d['completed'] as num?)?.toInt() ?? 0,
-                  cancelled: (d['cancelled'] as num?)?.toInt() ?? 0,
-                  maxVal: maxVal,
-                  maxHeight: c.maxHeight,
-                  cancelledColor: scheme.outline,
+    return LayoutBuilder(
+      builder: (context, c) {
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            for (final d in series)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                  child: _StackedBar(
+                    completed: (d['completed'] as num?)?.toInt() ?? 0,
+                    cancelled: (d['cancelled'] as num?)?.toInt() ?? 0,
+                    maxVal: maxVal,
+                    maxHeight: c.maxHeight,
+                    cancelledColor: scheme.outline,
+                  ),
                 ),
               ),
-            ),
-        ],
-      );
-    });
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -1010,7 +1095,9 @@ class _StackedBar extends StatelessWidget {
             height: cancelledH,
             decoration: BoxDecoration(
               color: cancelledColor,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(3),
+              ),
             ),
           ),
         if (completedH > 0)
@@ -1051,24 +1138,32 @@ class _NewPatientsCard extends StatelessWidget {
       child: patients.isEmpty
           ? Padding(
               padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Text('No patients registered yet.',
-                  style: TextStyle(
-                      color: scheme.onSurfaceVariant, fontSize: 13.5)),
+              child: Text(
+                'No patients registered yet.',
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 13.5,
+                ),
+              ),
             )
-          : LayoutBuilder(builder: (context, c) {
-              final cols = c.maxWidth >= 640 ? 2 : 1;
-              const gap = 12.0;
-              final tileWidth = (c.maxWidth - gap * (cols - 1)) / cols;
-              return Wrap(
-                spacing: gap,
-                runSpacing: gap,
-                children: [
-                  for (final p in patients)
-                    SizedBox(
-                        width: tileWidth, child: _NewPatientTile(patient: p)),
-                ],
-              );
-            }),
+          : LayoutBuilder(
+              builder: (context, c) {
+                final cols = c.maxWidth >= 640 ? 2 : 1;
+                const gap = 12.0;
+                final tileWidth = (c.maxWidth - gap * (cols - 1)) / cols;
+                return Wrap(
+                  spacing: gap,
+                  runSpacing: gap,
+                  children: [
+                    for (final p in patients)
+                      SizedBox(
+                        width: tileWidth,
+                        child: _NewPatientTile(patient: p),
+                      ),
+                  ],
+                );
+              },
+            ),
     );
   }
 }
@@ -1111,9 +1206,10 @@ class _NewPatientTile extends StatelessWidget {
                   child: Text(
                     name.isNotEmpty ? name[0].toUpperCase() : '?',
                     style: const TextStyle(
-                        color: MedThruTheme.tealDeep,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14),
+                      color: MedThruTheme.tealDeep,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -1123,28 +1219,35 @@ class _NewPatientTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: scheme.onSurface),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      color: scheme.onSurface,
+                    ),
                   ),
                 ),
                 if (age != null)
-                  Text('$age yrs',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: scheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w600)),
+                  Text(
+                    '$age yrs',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
-              reason == null || reason.isEmpty ? 'No visit reason on file.' : reason,
+              reason == null || reason.isEmpty
+                  ? 'No visit reason on file.'
+                  : reason,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                  fontSize: 12.5,
-                  color: scheme.onSurfaceVariant,
-                  height: 1.35),
+                fontSize: 12.5,
+                color: scheme.onSurfaceVariant,
+                height: 1.35,
+              ),
             ),
           ],
         ),

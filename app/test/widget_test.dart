@@ -12,11 +12,13 @@ void main() {
   testWidgets('Landing page renders when signed out', (tester) async {
     await tester.pumpWidget(const MedThruApp(enableTapListening: false, enableNotifications: false));
 
+    // The landing page is the hero, the two call-to-action buttons and the
+    // disclaimer — the "Why Med-IC" and "How it works" sections were dropped.
+    expect(find.text('NFC MEDICAL CARD'), findsOneWidget);
     expect(find.textContaining('readable in a tap'), findsOneWidget);
-    expect(find.text('Why Med-IC'), findsOneWidget);
-    expect(find.text('How it works'), findsOneWidget);
 
-    // Signed out: sign-in offered, no doctor tools, no logout.
+    // Signed out: both sign-in routes offered, no doctor tools, no logout.
+    expect(find.text('Log in with phone'), findsOneWidget);
     expect(find.text('Doctor sign in'), findsOneWidget);
     expect(find.byIcon(Icons.logout), findsNothing);
     expect(find.text('Register patient'), findsNothing);
