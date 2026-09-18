@@ -138,6 +138,32 @@ async function main() {
     });
     assert(res.status === 403, 'a non-admin doctor is blocked from card reissue');
 
+    // Pick a clinic open every day of the week for use throughout the rest of
+    // the test. Later tasks (3, 6, 7) need this in scope too.
+    res = await fetch(`${BASE}/clinics`);
+    const clinics = await res.json();
+    assert(clinics.length > 0, 'clinics are seeded on first boot');
+    const clinic = clinics.find((c) => c.open_days === '1,2,3,4,5,6,7');
+    assert(clinic, 'a clinic open every day exists to book against');
+
+    // A doctor can self-assign to a seeded clinic, and that clinic then
+    // lists them.
+    res = await fetch(`${BASE}/auth/me`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ clinicId: clinic.id }),
+    });
+    assert(res.status === 200, 'doctor assigns themself to a clinic');
+    const profile = await res.json();
+    assert(profile.clinic_id === clinic.id, 'doctor profile reflects the clinic assignment');
+
+    res = await fetch(`${BASE}/clinics/${clinic.id}/doctors`);
+    const clinicDoctors = await res.json();
+    assert(clinicDoctors.some((d) => d.name === 'CI Doctor'),
+      'the clinic lists its assigned doctor');
+    assert(!('email' in clinicDoctors[0]) && !('license_number' in clinicDoctors[0]),
+      'the clinic doctor listing does not leak private fields');
+
     // Patient registration issues a card token exactly once.
     res = await fetch(`${BASE}/patients`, {
       method: 'POST',
@@ -166,17 +192,7 @@ async function main() {
     assert(allergies.length === 1 && allergies[0].allergen === 'Penicillin',
       'the allergy shows up in the doctor-side listing');
 
-    // Appointments: browse clinics (seeded on first boot), book, then cancel.
-    // Pick a clinic open every day of the week, and a date a week out — using
-    // "today" would make the outcome depend on what day and time this test
-    // happens to run (today's hours may already be closed, or fall on a day
-    // the clinic isn't open).
-    res = await fetch(`${BASE}/clinics`);
-    const clinics = await res.json();
-    assert(clinics.length > 0, 'clinics are seeded on first boot');
-    const clinic = clinics.find((c) => c.open_days === '1,2,3,4,5,6,7');
-    assert(clinic, 'a clinic open every day exists to book against');
-
+    // Appointments: book and cancel.
     const aWeekOut = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
       .toISOString().slice(0, 10);
     res = await fetch(`${BASE}/clinics/${clinic.id}/availability?date=${aWeekOut}`);

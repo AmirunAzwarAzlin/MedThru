@@ -196,6 +196,7 @@ function doctorProfile(doctor) {
     email: doctor.email,
     phone: doctor.phone,
     license_number: doctor.license_number,
+    clinic_id: doctor.clinic_id ?? null,
     created_at: doctor.created_at,
     is_admin: !!doctor.is_admin,
   };
@@ -206,12 +207,23 @@ app.get('/api/auth/me', requireDoctor, (req, res) => {
 });
 
 app.put('/api/auth/me', requireDoctor, (req, res) => {
-  const { name, email, phone } = req.body;
+  const { name, email, phone, clinicId } = req.body;
   const updates = [];
   const values = [];
   if (name !== undefined) { updates.push('name = ?'); values.push(name); }
   if (email !== undefined) { updates.push('email = ?'); values.push(email); }
   if (phone !== undefined) { updates.push('phone = ?'); values.push(phone || null); }
+  if (clinicId !== undefined) {
+    if (clinicId === null) {
+      updates.push('clinic_id = ?');
+      values.push(null);
+    } else {
+      const clinic = activeClinic(clinicId);
+      if (!clinic) return res.status(404).json({ error: 'Clinic not found' });
+      updates.push('clinic_id = ?');
+      values.push(clinic.id);
+    }
+  }
 
   if (updates.length === 0) {
     return res.json(doctorProfile(req.doctor));
@@ -1170,6 +1182,18 @@ app.get('/api/clinics', (_req, res) => {
   res.json(db.prepare(
     `SELECT * FROM clinics WHERE status = 'active' ORDER BY kind, name`
   ).all());
+});
+
+/// Doctors assigned to a clinic, for the patient booking flow's doctor-picker
+/// step. Deliberately narrow — no email or license number, which are private.
+app.get('/api/clinics/:id/doctors', (req, res) => {
+  const clinic = activeClinic(req.params.id);
+  if (!clinic) {
+    return res.status(404).json({ error: 'Clinic not found' });
+  }
+  res.json(db.prepare(
+    `SELECT id, name, phone FROM doctors WHERE clinic_id = ? ORDER BY name`
+  ).all(clinic.id));
 });
 
 app.post('/api/clinics', requireDoctor, (req, res) => {
