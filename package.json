@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node test/reschedule-scoring.js && node test/smoke.js",
+    "test": "node test/reschedule-scoring.js && node test/gemini.js && node test/smoke.js",
     "reader": "node reader.js",
     "write-card": "node write-card.js",
     "start": "node server.js",
@@ -15,7 +15,9 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@google/genai": "^2.23.0",
     "bcryptjs": "^3.0.3",
+    "dotenv": "^18.0.0",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "nfc-pcsc": "^0.8.1"
