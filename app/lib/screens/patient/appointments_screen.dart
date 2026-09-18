@@ -6,6 +6,7 @@ import '../../notifications.dart';
 import '../../theme.dart';
 import '../../widgets.dart';
 import '../appointments/book_appointment_screen.dart';
+import '../appointments/reschedule_screen.dart';
 
 /// Local-only reminder preference, keyed by appointment id — see
 /// `notifications.dart` for why this never touches the server.
@@ -136,6 +137,44 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
     }
   }
 
+  Future<void> _reschedule(Map<String, dynamic> appt) async {
+    final updated = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            RescheduleScreen(appointment: appt, cardToken: widget.cardToken),
+      ),
+    );
+    if (updated != null && mounted) {
+      setState(_load);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Reschedule proposed — waiting on the clinic to confirm.'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _respondToReschedule(Map<String, dynamic> appt, bool accept) async {
+    try {
+      await MedThruApi.instance.respondToReschedule(
+        appt['id'] as int,
+        accept,
+        cardToken: widget.cardToken,
+      );
+      if (!mounted) return;
+      setState(_load);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(accept ? 'New time accepted.' : 'Kept your original time.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -211,33 +250,44 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                   )
                 else
                   for (final a in appts)
-                    _AppointmentCard(
-                      appt: a,
-                      onCancel: _cancellable.contains(a['status'])
-                          ? () => _cancel(a)
-                          : null,
-                      // Only a confirmed, still-upcoming appointment is worth
-                      // reminding about — a pending request might still be
-                      // rejected, and a past one has nothing left to remind.
-                      remindOn: _reminding.contains(a['id'] as int),
-                      onToggleRemind:
-                          a['status'] == 'confirmed' &&
-                              DateTime.parse(
-                                a['starts_at'] as String,
-                              ).isAfter(DateTime.now())
-                          ? () => _toggleReminder(a)
-                          : null,
-                      // Exportable while it still holds a slot and hasn't
-                      // happened — no point adding a past or dead one to a
-                      // calendar.
-                      onAddToCalendar:
-                          _cancellable.contains(a['status']) &&
-                              DateTime.parse(
-                                a['starts_at'] as String,
-                              ).isAfter(DateTime.now())
-                          ? () => exportAppointmentToCalendar(context, a)
-                          : null,
-                    ),
+                    if (a['status'] == 'reschedule_requested' &&
+                        a['proposed_by'] == 'doctor')
+                      _ReschedulePendingCard(
+                        appt: a,
+                        onAccept: () => _respondToReschedule(a, true),
+                        onDecline: () => _respondToReschedule(a, false),
+                      )
+                    else
+                      _AppointmentCard(
+                        appt: a,
+                        onCancel: _cancellable.contains(a['status'])
+                            ? () => _cancel(a)
+                            : null,
+                        onReschedule: a['status'] == 'confirmed'
+                            ? () => _reschedule(a)
+                            : null,
+                        // Only a confirmed, still-upcoming appointment is worth
+                        // reminding about — a pending request might still be
+                        // rejected, and a past one has nothing left to remind.
+                        remindOn: _reminding.contains(a['id'] as int),
+                        onToggleRemind:
+                            a['status'] == 'confirmed' &&
+                                DateTime.parse(
+                                  a['starts_at'] as String,
+                                ).isAfter(DateTime.now())
+                            ? () => _toggleReminder(a)
+                            : null,
+                        // Exportable while it still holds a slot and hasn't
+                        // happened — no point adding a past or dead one to a
+                        // calendar.
+                        onAddToCalendar:
+                            _cancellable.contains(a['status']) &&
+                                DateTime.parse(
+                                  a['starts_at'] as String,
+                                ).isAfter(DateTime.now())
+                            ? () => exportAppointmentToCalendar(context, a)
+                            : null,
+                      ),
               ],
             );
           },
@@ -251,6 +301,7 @@ class _AppointmentCard extends StatelessWidget {
   const _AppointmentCard({
     required this.appt,
     this.onCancel,
+    this.onReschedule,
     this.remindOn = false,
     this.onToggleRemind,
     this.onAddToCalendar,
@@ -258,6 +309,10 @@ class _AppointmentCard extends StatelessWidget {
 
   final Map<String, dynamic> appt;
   final VoidCallback? onCancel;
+
+  /// Null hides the "Reschedule" action (only offered on a confirmed
+  /// appointment).
+  final VoidCallback? onReschedule;
   final bool remindOn;
 
   /// Null hides the reminder toggle entirely (past, cancelled, or still
@@ -334,6 +389,7 @@ class _AppointmentCard extends StatelessWidget {
             ],
             if (onToggleRemind != null ||
                 onAddToCalendar != null ||
+                onReschedule != null ||
                 onCancel != null) ...[
               const SizedBox(height: 6),
               Wrap(
@@ -360,6 +416,12 @@ class _AppointmentCard extends StatelessWidget {
                       ),
                       label: Text(remindOn ? 'Reminder on' : 'Remind me'),
                     ),
+                  if (onReschedule != null)
+                    TextButton.icon(
+                      onPressed: onReschedule,
+                      icon: const Icon(Icons.sync_alt, size: 16),
+                      label: const Text('Reschedule'),
+                    ),
                   if (onCancel != null)
                     TextButton.icon(
                       onPressed: onCancel,
@@ -372,6 +434,69 @@ class _AppointmentCard extends StatelessWidget {
                 ],
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown instead of the normal appointment card when the clinic has proposed
+/// a new time and is waiting on the patient to accept or decline it.
+class _ReschedulePendingCard extends StatelessWidget {
+  const _ReschedulePendingCard({
+    required this.appt,
+    required this.onAccept,
+    required this.onDecline,
+  });
+
+  final Map<String, dynamic> appt;
+  final VoidCallback onAccept;
+  final VoidCallback onDecline;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      color: scheme.surfaceContainerLow,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.sync_alt, size: 18, color: scheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${appt['clinic_name']} wants to move your appointment',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text('From ${formatAppointmentTime(appt['starts_at'] as String)}'),
+            Text(
+              'To ${formatAppointmentTime(appt['proposed_starts_at'] as String)}',
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              children: [
+                OutlinedButton(
+                  onPressed: onDecline,
+                  child: const Text('Keep original time'),
+                ),
+                FilledButton(
+                  onPressed: onAccept,
+                  child: const Text('Accept new time'),
+                ),
+              ],
+            ),
           ],
         ),
       ),
