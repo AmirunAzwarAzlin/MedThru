@@ -246,18 +246,11 @@ db.exec(`
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  -- The one rule that actually prevents a double booking. Two patients can
-  -- both be looking at the same free slot and both pass an availability check,
-  -- so the database, not the request handler, has the final say: the second
-  -- INSERT loses and is reported as a conflict.
-  --
-  -- Partial on purpose. It covers only the statuses that occupy the slot, so a
-  -- pending request still blocks the time (a doctor has yet to rule on it),
-  -- while cancelling or rejecting releases it with no extra bookkeeping — and
-  -- a slot can be re-booked after a cancellation without tripping the index.
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_slot
-    ON appointments(clinic_id, starts_at)
-    WHERE status IN ('requested', 'confirmed');
+  -- The rules that actually prevent a double booking live in the per-doctor
+  -- migration further down (idx_appointments_slot_unassigned and
+  -- idx_appointments_slot_per_doctor), not here — declaring a clinic-wide one
+  -- here too would only show a reader a constraint that is dropped on the very
+  -- next boot.
 
   CREATE INDEX IF NOT EXISTS idx_appointments_patient
     ON appointments(patient_id, starts_at DESC);

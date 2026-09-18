@@ -306,6 +306,69 @@ async function main() {
     });
     assert(res.status === 400, 'booking rejects a doctorId that does not exist');
 
+    // The mirror image of the doctor-B regression above: two doctors sharing a
+    // time is fine, but a doctor and a *doctor-less* appointment sharing one is
+    // not — that is one clinic being in two places at once. Neither partial
+    // unique index sees across the doctor_id IS NULL / IS NOT NULL divide, so
+    // this is caught in the handler; without that check it succeeds silently
+    // and deterministically, no race required.
+    // Taken from the end of the day so the reschedule assertions further down,
+    // which all reach for the earliest free slot, aren't starved by these two.
+    res = await fetch(`${BASE}/clinics/${clinic.id}/availability?date=${aWeekOut}`);
+    const { slots: clinicWideSlots } = await res.json();
+    const unassignedFirstSlot = clinicWideSlots[clinicWideSlots.length - 1];
+    const doctorFirstSlot = clinicWideSlots[clinicWideSlots.length - 2];
+    assert(unassignedFirstSlot && doctorFirstSlot && unassignedFirstSlot !== doctorFirstSlot,
+      'two clinic-wide free slots are available for the cross-category tests');
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/appointments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clinicId: clinic.id,
+        startsAt: `${aWeekOut} ${unassignedFirstSlot}`, reason: 'Unassigned booking holds the clinic slot',
+      }),
+    });
+    assert(res.status === 201, 'an appointment can be booked with no doctor assigned');
+
+    res = await fetch(`${BASE}/clinics/${clinic.id}/availability?date=${aWeekOut}&doctorId=${doctorA.id}`);
+    const { slots: doctorASlotsVsUnassigned } = await res.json();
+    assert(!doctorASlotsVsUnassigned.includes(unassignedFirstSlot),
+      "a doctor's availability hides a slot held by an unassigned appointment");
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/appointments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clinicId: clinic.id, doctorId: doctorA.id,
+        startsAt: `${aWeekOut} ${unassignedFirstSlot}`, reason: 'Doctor booking over an unassigned slot',
+      }),
+    });
+    assert(res.status === 409,
+      'booking a doctor onto a slot an unassigned appointment holds is rejected');
+
+    // And the reverse direction: doctor-assigned first, unassigned second.
+    res = await fetch(`${BASE}/patients/token/${cardToken}/appointments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clinicId: clinic.id, doctorId: doctorA.id,
+        startsAt: `${aWeekOut} ${doctorFirstSlot}`, reason: 'Doctor-assigned booking holds the clinic slot',
+      }),
+    });
+    assert(res.status === 201, 'a doctor-assigned appointment books the second free slot');
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/appointments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clinicId: clinic.id,
+        startsAt: `${aWeekOut} ${doctorFirstSlot}`, reason: 'Unassigned booking over a doctor slot',
+      }),
+    });
+    assert(res.status === 409,
+      'booking an unassigned appointment onto a slot a doctor holds is rejected');
+
     // Reschedule: patient proposes, doctor accepts.
     res = await fetch(`${BASE}/patients/token/${cardToken}/appointments`, {
       method: 'POST',

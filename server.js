@@ -25,6 +25,7 @@ const {
   isValidDate,
   normalizeStartsAt,
   toDateString,
+  MAX_ADVANCE_DAYS,
 } = require('./appointments');
 const { urgencyTag, rankCandidates } = require('./reschedule');
 const { rationalizeCandidates } = require('./gemini');
@@ -1173,9 +1174,12 @@ function pctDelta(current, previous) {
 
 /// The "HH:MM" times already held by live appointments at a clinic on a
 /// date. Scoped to one doctor's day when `doctorId` is given, so two doctors
-/// at the same clinic don't block each other's slots.
+/// at the same clinic don't block each other's slots — but doctor-less
+/// (legacy/unassigned) appointments still count against every doctor, since
+/// they occupy the clinic's one shared pool of capacity and no partial index
+/// spans both categories.
 function heldTimes(clinicId, dateStr, doctorId) {
-  const doctorClause = doctorId ? ' AND doctor_id = ?' : '';
+  const doctorClause = doctorId ? ' AND (doctor_id = ? OR doctor_id IS NULL)' : '';
   const params = [clinicId, `${dateStr}%`, ...HELD_STATUSES];
   if (doctorId) params.push(doctorId);
   return db.prepare(
@@ -1238,6 +1242,24 @@ app.post('/api/clinics', requireDoctor, (req, res) => {
   );
 });
 
+/// True when the clinic+time is already held by an appointment on the *other*
+/// side of the doctor_id divide — a doctor-less booking when we're placing a
+/// doctor-assigned one, or vice versa.
+///
+/// The two partial unique indexes each police only their own half
+/// (`doctor_id IS NULL` / `IS NOT NULL`), so neither one catches a collision
+/// that crosses between them. Without this check the pair would both land and
+/// the clinic would be double-booked at the same minute. Safe to check-then-
+/// write: `node:sqlite` is synchronous, so nothing else runs between this
+/// query and the write that follows it.
+function crossCategoryHeld(clinicId, startsAt, doctorId) {
+  return db.prepare(
+    doctorId
+      ? `SELECT 1 FROM appointments WHERE clinic_id = ? AND starts_at = ? AND doctor_id IS NULL AND status IN (${HELD_PLACEHOLDERS})`
+      : `SELECT 1 FROM appointments WHERE clinic_id = ? AND starts_at = ? AND doctor_id IS NOT NULL AND status IN (${HELD_PLACEHOLDERS})`
+  ).get(clinicId, startsAt, ...HELD_STATUSES);
+}
+
 /// Bookable slots at a clinic on a date: its opening hours, minus the slots
 /// already held, minus anything now in the past.
 app.get('/api/clinics/:id/availability', (req, res) => {
@@ -1284,6 +1306,12 @@ app.post('/api/patients/token/:token/appointments', lookupLimiter, (req, res) =>
   const problem = bookingError(clinic, startsAt);
   if (problem) {
     return res.status(400).json({ error: problem });
+  }
+
+  if (crossCategoryHeld(clinic.id, startsAt, doctorId)) {
+    return res.status(409).json({
+      error: 'That slot has just been taken. Please choose another time.',
+    });
   }
 
   let result;
@@ -1395,7 +1423,7 @@ app.get('/api/doctor/dashboard', requireDoctor, (req, res) => {
   const todaysAppointments = db.prepare(
     `${APPOINTMENT_SELECT}
      WHERE substr(appointments.starts_at, 1, 10) = ?
-       AND appointments.status IN ('requested', 'confirmed', 'completed')
+       AND appointments.status IN ('requested', 'confirmed', 'reschedule_requested', 'completed')
      ORDER BY appointments.starts_at ASC`
   ).all(today);
 
@@ -1635,14 +1663,34 @@ function respondToReschedule(appointment, accept, doctorId, patientId) {
     return null;
   }
 
+  // The target slot may be occupied by an appointment on the other side of
+  // the doctor_id divide, which neither partial unique index would catch.
+  if (crossCategoryHeld(appointment.clinic_id, appointment.proposed_starts_at, appointment.doctor_id)) {
+    return { status: 409, error: 'That slot has just been taken. Please choose another time.' };
+  }
+
   try {
-    db.prepare(
-      `UPDATE appointments
-       SET status = 'confirmed', starts_at = proposed_starts_at,
-           proposed_starts_at = NULL, proposed_by = NULL, reschedule_reason = NULL,
-           decided_by = ?, decided_at = datetime('now'), updated_at = datetime('now')
-       WHERE id = ?`
-    ).run(doctorId, appointment.id);
+    if (doctorId) {
+      // A doctor is the one accepting, so they become the deciding doctor.
+      db.prepare(
+        `UPDATE appointments
+         SET status = 'confirmed', starts_at = proposed_starts_at,
+             proposed_starts_at = NULL, proposed_by = NULL, reschedule_reason = NULL,
+             decided_by = ?, decided_at = datetime('now'), updated_at = datetime('now')
+         WHERE id = ?`
+      ).run(doctorId, appointment.id);
+    } else {
+      // A patient accepted a doctor-proposed move. decided_by already records
+      // the doctor who originally confirmed this appointment — leave it (and
+      // decided_at) alone rather than blanking that history out.
+      db.prepare(
+        `UPDATE appointments
+         SET status = 'confirmed', starts_at = proposed_starts_at,
+             proposed_starts_at = NULL, proposed_by = NULL, reschedule_reason = NULL,
+             updated_at = datetime('now')
+         WHERE id = ?`
+      ).run(appointment.id);
+    }
   } catch (err) {
     if (String(err.message).includes('UNIQUE')) {
       return { status: 409, error: 'That slot has just been taken. Please choose another time.' };
@@ -1787,17 +1835,30 @@ async function buildRescheduleSuggestions(appointment) {
   const hasChronicCondition = !!(patient.conditions && patient.conditions.trim());
   const tag = urgencyTag(appointment.reason, hasChronicCondition);
 
-  const [origDate] = appointment.starts_at.split(' ');
-  const start = new Date(`${origDate}T00:00:00`);
+  // The candidate window runs forward from *today*, not from the appointment's
+  // own date: someone rescheduling usually wants an earlier or same-day slot,
+  // and anchoring on the original date would only ever offer later ones. It is
+  // also capped to the booking horizon, so nothing we suggest would be
+  // rejected by `bookingError` if the patient actually proposed it.
+  const origStartsAt = appointment.starts_at;
+  const [origDate] = origStartsAt.split(' ');
+  const now = new Date();
+  const start = new Date(`${toDateString(now)}T00:00:00`);
+  const lastOffset = Math.min(13, MAX_ADVANCE_DAYS);
   const sameDayBookedTimesByDate = {};
   const candidates = [];
-  for (let i = 1; i <= 14; i++) {
+  for (let i = 0; i <= lastOffset; i++) {
     const d = new Date(start);
     d.setDate(d.getDate() + i);
     const dateStr = toDateString(d);
     const taken = heldTimes(clinic.id, dateStr, appointment.doctor_id || undefined);
     sameDayBookedTimesByDate[dateStr] = taken;
-    for (const time of availableSlots(clinic, dateStr, taken)) {
+    for (const time of availableSlots(clinic, dateStr, taken, now)) {
+      // Only this appointment's own slot is off the table on its own day —
+      // the rest of that day is fair game. (It is normally filtered out by
+      // `taken` anyway, since a live appointment holds its own slot; this is
+      // the explicit guarantee that we never suggest moving a time to itself.)
+      if (dateStr === origDate && `${dateStr} ${time}` === origStartsAt) continue;
       candidates.push(`${dateStr} ${time}`);
     }
   }
@@ -1811,7 +1872,7 @@ async function buildRescheduleSuggestions(appointment) {
     sameDayBookedTimesByDate,
     slotMinutes: clinic.slot_minutes,
     typicalDailyLoad,
-    now: new Date(),
+    now,
     limit: 5,
   });
 
@@ -1821,11 +1882,17 @@ async function buildRescheduleSuggestions(appointment) {
     candidates: ranked,
   });
 
-  return ranked.map((r, i) => ({
+  // Matched by slot time, not by position: nothing in the prompt or schema
+  // obliges Gemini to return the suggestions in the order it was given them,
+  // or to return one for every candidate. A positional lookup would quietly
+  // attach the wrong reason to a slot the moment it reordered or came up short.
+  const aiByStartsAt = new Map((aiSuggestions ?? []).map((s) => [s.startsAt, s.rationale]));
+
+  return ranked.map((r) => ({
     startsAt: r.startsAt,
     patientFit: r.patientFit,
     clinicFit: r.clinicFit,
-    rationale: aiSuggestions?.[i]?.rationale ?? templatedRationale(r),
+    rationale: aiByStartsAt.get(r.startsAt) ?? templatedRationale(r),
   }));
 }
 

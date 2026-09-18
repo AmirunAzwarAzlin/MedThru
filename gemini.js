@@ -49,10 +49,15 @@ function buildPrompt({ originalStartsAt, urgencyTag, candidates }) {
   ].join('\n');
 }
 
-/// Returns `[{ startsAt, rationale }]` in the same order as `candidates`, or
-/// `null` if Gemini is unconfigured, unreachable, too slow, or responds with
-/// something that doesn't parse. `genAI`/`timeoutMs` are injectable for
-/// testing without a real API key or a real 4-second wait.
+/// Returns `[{ startsAt, rationale }]`, or `null` if Gemini is unconfigured,
+/// unreachable, too slow, or responds with something that doesn't parse.
+///
+/// Neither the order nor the length is guaranteed — the model is asked for one
+/// entry per candidate but nothing enforces that, so callers must match the
+/// results back by `startsAt` rather than by position.
+///
+/// `genAI`/`timeoutMs` are injectable for testing without a real API key or a
+/// real 4-second wait.
 async function rationalizeCandidates(
   { originalStartsAt, urgencyTag, candidates },
   { genAI = defaultClient(), timeoutMs = DEFAULT_TIMEOUT_MS } = {},
