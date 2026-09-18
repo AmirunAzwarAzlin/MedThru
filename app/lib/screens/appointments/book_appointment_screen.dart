@@ -35,6 +35,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
   late Future<List<Map<String, dynamic>>> _clinics;
   Map<String, dynamic>? _clinic;
+  Future<List<Map<String, dynamic>>>? _doctors;
+  Map<String, dynamic>? _doctor;
   DateTime _date = _today();
 
   Future<List<String>>? _slots;
@@ -67,6 +69,18 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   void _selectClinic(Map<String, dynamic>? clinic) {
     setState(() {
       _clinic = clinic;
+      _doctor = null;
+      _slot = null;
+      _error = null;
+      _doctors = clinic == null ? null : _api.getClinicDoctors(clinic['id'] as int);
+      _doctors?.ignore();
+      _loadSlots();
+    });
+  }
+
+  void _selectDoctor(Map<String, dynamic>? doctor) {
+    setState(() {
+      _doctor = doctor;
       _slot = null;
       _error = null;
       _loadSlots();
@@ -78,7 +92,11 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       _slots = null;
       return;
     }
-    _slots = _api.getAvailability(_clinic!['id'] as int, _dateStr);
+    _slots = _api.getAvailability(
+      _clinic!['id'] as int,
+      _dateStr,
+      doctorId: _doctor?['id'] as int?,
+    );
     _slots!.ignore(); // handled by the FutureBuilder; silence unawaited-error
   }
 
@@ -111,6 +129,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       final appt = await _api.bookAppointment(
         widget.cardToken,
         clinicId: _clinic!['id'] as int,
+        doctorId: _doctor?['id'] as int?,
         startsAt: '$_dateStr $_slot',
         reason: _reason.text.trim(),
       );
@@ -176,7 +195,38 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
             if (_clinic != null) ...[
               const SizedBox(height: 24),
-              _StepLabel(n: 2, text: 'Pick a date'),
+              _StepLabel(n: 2, text: 'Choose a doctor (optional)'),
+              const SizedBox(height: 10),
+              FutureBuilder<List<Map<String, dynamic>>>(
+                future: _doctors,
+                builder: (context, snap) {
+                  if (snap.connectionState != ConnectionState.done) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  final doctors = snap.data ?? const [];
+                  if (doctors.isEmpty) {
+                    return Text('No doctors listed at this clinic yet — any available doctor will see you.',
+                        style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant));
+                  }
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final d in doctors)
+                        ChoiceChip(
+                          label: Text(d['name'] as String),
+                          selected: _doctor?['id'] == d['id'],
+                          onSelected: (selected) => _selectDoctor(selected ? d : null),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
+              _StepLabel(n: 3, text: 'Pick a date'),
               const SizedBox(height: 10),
               OutlinedButton.icon(
                 onPressed: _pickDate,
@@ -186,7 +236,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     .first),
               ),
               const SizedBox(height: 24),
-              _StepLabel(n: 3, text: 'Pick a time'),
+              _StepLabel(n: 4, text: 'Pick a time'),
               const SizedBox(height: 10),
               SlotGrid(
                 slots: _slots!,
@@ -197,7 +247,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                 }),
               ),
               const SizedBox(height: 24),
-              _StepLabel(n: 4, text: 'Reason for visit'),
+              _StepLabel(n: 5, text: 'Reason for visit'),
               const SizedBox(height: 10),
               Wrap(
                 spacing: 8,
