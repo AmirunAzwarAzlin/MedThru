@@ -65,6 +65,58 @@ async function main() {
     assert(perDoctorIdx && perDoctorIdx.sql.includes('reschedule_requested') && perDoctorIdx.sql.includes('doctor_id'),
       'idx_appointments_slot_per_doctor covers reschedule_requested and is keyed by doctor_id');
 
+    // Test the index split behavior: two different doctors at the same clinic
+    // can both hold appointments at the same time, but the same doctor cannot.
+    // This requires direct database inserts since the API doesn't yet support
+    // assigning doctors to appointments (Task 2/3).
+    {
+      const testDb = new DatabaseSync(DB_PATH);
+
+      // Get a seeded clinic and insert test doctors.
+      const clinic = testDb.prepare(`SELECT id FROM clinics LIMIT 1`).get();
+      assert(clinic, 'clinic exists to test against');
+
+      const insertDoctor = testDb.prepare(
+        `INSERT INTO doctors (name, license_number, email, password_hash)
+         VALUES (?, ?, ?, ?)`
+      );
+      const doctor1Id = insertDoctor.run('Test Doctor 1', 'TEST-001', 'test1@medthru.test', 'hash1').lastInsertRowid;
+      const doctor2Id = insertDoctor.run('Test Doctor 2', 'TEST-002', 'test2@medthru.test', 'hash2').lastInsertRowid;
+
+      // Insert a test patient.
+      const insertPatient = testDb.prepare(
+        `INSERT INTO patients (full_name) VALUES (?)`
+      );
+      const patientId = insertPatient.run('Test Patient').lastInsertRowid;
+
+      const testTime = '2099-12-25 10:00';
+      const insertAppointment = testDb.prepare(
+        `INSERT INTO appointments (patient_id, clinic_id, doctor_id, starts_at, slot_minutes, status)
+         VALUES (?, ?, ?, ?, 30, 'confirmed')`
+      );
+
+      // First doctor can book the slot.
+      insertAppointment.run(patientId, clinic.id, doctor1Id, testTime);
+      assert(true, 'doctor 1 can hold an appointment at clinic+time');
+
+      // Second doctor can also book the same slot (per-doctor index allows it).
+      insertAppointment.run(patientId, clinic.id, doctor2Id, testTime);
+      assert(true, 'doctor 2 can hold an appointment at the same clinic+time (per-doctor index allows it)');
+
+      // First doctor cannot book the same slot again (unique per-doctor index prevents it).
+      let secondBookingThrew = false;
+      try {
+        insertAppointment.run(patientId, clinic.id, doctor1Id, testTime);
+      } catch (err) {
+        if (err.message.includes('UNIQUE constraint failed')) {
+          secondBookingThrew = true;
+        }
+      }
+      assert(secondBookingThrew, 'doctor 1 cannot hold a second appointment at the same clinic+time (per-doctor index prevents it)');
+
+      testDb.close();
+    }
+
     // Doctor registration and login.
     let res = await fetch(`${BASE}/auth/register-doctor`, {
       method: 'POST',

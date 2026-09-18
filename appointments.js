@@ -11,7 +11,7 @@
 const HELD_STATUSES = ['requested', 'confirmed', 'reschedule_requested'];
 
 const STATUSES = [
-  'requested', 'confirmed', 'rejected', 'cancelled', 'completed',
+  'requested', 'confirmed', 'rejected', 'cancelled', 'completed', 'reschedule_requested',
 ];
 
 /// Statuses a doctor may move a live appointment to.
