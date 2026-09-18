@@ -169,6 +169,33 @@ currently load a `.env` file anywhere, so this adds `dotenv` as a dependency
 and a `require('dotenv').config()` call so a local key is actually picked up
 in development.
 
+**Connecting to Gemini.** A new single-purpose module, `gemini.js` (alongside
+`tokens.js`, `ratelimit.js`, `appointments.js`), exports one function:
+`rationalizeCandidates({ originalSlot, urgencyTag, candidates })`.
+
+- **Client**: the official Google GenAI Node SDK, initialized once at startup
+  from `GEMINI_API_KEY`. If the key is unset, the function returns `null`
+  immediately without attempting a network call — same fallback path as a
+  failed call.
+- **Model**: `gemini-2.5-flash`. The task is captioning an already-ranked list,
+  not open-ended reasoning; a fast/cheap model is the right fit for a call made
+  inline in a request handler.
+- **Structured output, not free text.** The request sets
+  `responseMimeType: "application/json"` with a `responseSchema` forcing the
+  shape `{ suggestions: [{ startsAt, rationale }] }`. This avoids parsing
+  free-form prose (and the prompt-injection surface that comes with it) — a
+  malformed response is just a JSON parse the caller catches and falls back on.
+- **Prompt contents**: exactly the redacted context above — original slot
+  day/time, the coarse `urgencyTag`, and each candidate's day/time plus its
+  `patientFit`/`clinicFit` score breakdown. Nothing else.
+- **Timeout**: wrapped in a hard ~4-second timeout. The suggestions endpoint is
+  a synchronous GET a user is waiting on; it cannot hang on a third-party call.
+  Timeout, non-2xx, or a schema-violating response all fall back to the
+  templated rationale, with no retry.
+- **No response caching** for the first pass — a repeated-refresh quota concern
+  is a cheap follow-up (in-memory cache keyed by appointment id), not a
+  day-one requirement.
+
 ## Client UI
 
 **Patient** (`app/lib/screens/patient/appointments_screen.dart`): confirmed
