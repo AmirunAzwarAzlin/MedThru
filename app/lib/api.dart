@@ -113,6 +113,7 @@ class MedThruApi extends ChangeNotifier {
     String? name,
     String? email,
     String? phone,
+    int? clinicId,
   }) async {
     final res = await http.put(
       Uri.parse('$_baseUrl/auth/me'),
@@ -121,6 +122,7 @@ class MedThruApi extends ChangeNotifier {
         if (name != null) 'name': name,
         if (email != null) 'email': email,
         if (phone != null) 'phone': phone,
+        if (clinicId != null) 'clinicId': clinicId,
       }),
     );
     if (res.statusCode != 200) {
@@ -866,11 +868,29 @@ class MedThruApi extends ChangeNotifier {
     return (jsonDecode(res.body) as List<dynamic>).cast<Map<String, dynamic>>();
   }
 
+  /// Doctors assigned to a clinic, for the doctor-picker step of booking.
+  Future<List<Map<String, dynamic>>> getClinicDoctors(int clinicId) async {
+    final res = await http.get(
+      Uri.parse('$_baseUrl/clinics/$clinicId/doctors'),
+      headers: _headers,
+    );
+    if (res.statusCode != 200) {
+      throw _errorFrom(res, 'Could not load doctors');
+    }
+    return (jsonDecode(res.body) as List<dynamic>).cast<Map<String, dynamic>>();
+  }
+
   /// The bookable start times ("HH:MM") at a clinic on [date] (YYYY-MM-DD),
-  /// with slots already taken or now in the past removed.
-  Future<List<String>> getAvailability(int clinicId, String date) async {
-    final uri = Uri.parse('$_baseUrl/clinics/$clinicId/availability')
-        .replace(queryParameters: {'date': date});
+  /// with slots already taken or now in the past removed. Scoped to
+  /// [doctorId] when given, so two doctors at the same clinic don't share
+  /// availability.
+  Future<List<String>> getAvailability(int clinicId, String date, {int? doctorId}) async {
+    final uri = Uri.parse('$_baseUrl/clinics/$clinicId/availability').replace(
+      queryParameters: {
+        'date': date,
+        if (doctorId != null) 'doctorId': '$doctorId',
+      },
+    );
     final res = await http.get(uri, headers: _headers);
     if (res.statusCode != 200) {
       throw _errorFrom(res, 'Could not load availability');
@@ -888,6 +908,7 @@ class MedThruApi extends ChangeNotifier {
   Future<Map<String, dynamic>> bookAppointment(
     String token, {
     required int clinicId,
+    int? doctorId,
     required String startsAt,
     String? reason,
   }) async {
@@ -896,6 +917,7 @@ class MedThruApi extends ChangeNotifier {
       headers: _headersFor(token),
       body: jsonEncode({
         'clinicId': clinicId,
+        if (doctorId != null) 'doctorId': doctorId,
         'startsAt': startsAt,
         if (reason != null && reason.isNotEmpty) 'reason': reason,
       }),
@@ -972,6 +994,67 @@ class MedThruApi extends ChangeNotifier {
     );
     if (res.statusCode != 200) {
       throw _errorFrom(res, 'Could not update appointment');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Ranked, AI-narrated alternative times for a confirmed appointment.
+  /// [cardToken] identifies a patient call; omit it for a doctor-auth call.
+  Future<List<Map<String, dynamic>>> getRescheduleSuggestions(
+    int appointmentId, {
+    String? cardToken,
+  }) async {
+    final path = cardToken != null
+        ? '/patients/token/$cardToken/appointments/$appointmentId/reschedule/suggestions'
+        : '/appointments/$appointmentId/reschedule/suggestions';
+    final res = await http.get(
+      Uri.parse('$_baseUrl$path'),
+      headers: cardToken != null ? _headersFor(cardToken) : _headers,
+    );
+    if (res.statusCode != 200) {
+      throw _errorFrom(res, 'Could not load reschedule suggestions');
+    }
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return (body['suggestions'] as List<dynamic>).cast<Map<String, dynamic>>();
+  }
+
+  /// Proposes a new time for a confirmed appointment. The other side must
+  /// accept it via [respondToReschedule] before it takes effect.
+  Future<Map<String, dynamic>> proposeReschedule(
+    int appointmentId,
+    String startsAt, {
+    String? cardToken,
+  }) async {
+    final path = cardToken != null
+        ? '/patients/token/$cardToken/appointments/$appointmentId/reschedule'
+        : '/appointments/$appointmentId/reschedule';
+    final res = await http.post(
+      Uri.parse('$_baseUrl$path'),
+      headers: cardToken != null ? _headersFor(cardToken) : _headers,
+      body: jsonEncode({'startsAt': startsAt}),
+    );
+    if (res.statusCode != 200) {
+      throw _errorFrom(res, 'Could not propose a new time');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Accepts or rejects a reschedule the other side proposed.
+  Future<Map<String, dynamic>> respondToReschedule(
+    int appointmentId,
+    bool accept, {
+    String? cardToken,
+  }) async {
+    final path = cardToken != null
+        ? '/patients/token/$cardToken/appointments/$appointmentId/reschedule/respond'
+        : '/appointments/$appointmentId/reschedule/respond';
+    final res = await http.post(
+      Uri.parse('$_baseUrl$path'),
+      headers: cardToken != null ? _headersFor(cardToken) : _headers,
+      body: jsonEncode({'accept': accept}),
+    );
+    if (res.statusCode != 200) {
+      throw _errorFrom(res, 'Could not respond to the reschedule request');
     }
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
