@@ -159,6 +159,16 @@ candidate. If the call fails or times out, fall back to a templated rationale
 ("Closest match to your original time" / "Fills an open slot in your doctor's
 day") — the ranked list still renders.
 
+**API key handling.** `GEMINI_API_KEY` is read from an environment variable
+only — never hardcoded, never committed. Unlike `JWT_SECRET` in `auth.js`
+(which falls back to a dev value, a known open gap tracked in the phase 1
+proposal), there is no fallback key: a missing key takes the same degraded
+path as a failed Gemini call, since a fallback API key isn't a meaningful
+concept. `.env` / `.env.*` are already in `.gitignore`; the project doesn't
+currently load a `.env` file anywhere, so this adds `dotenv` as a dependency
+and a `require('dotenv').config()` call so a local key is actually picked up
+in development.
+
 ## Client UI
 
 **Patient** (`app/lib/screens/patient/appointments_screen.dart`): confirmed
