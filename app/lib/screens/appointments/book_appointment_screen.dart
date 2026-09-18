@@ -188,7 +188,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               const SizedBox(height: 24),
               _StepLabel(n: 3, text: 'Pick a time'),
               const SizedBox(height: 10),
-              _SlotGrid(
+              SlotGrid(
                 slots: _slots!,
                 selected: _slot,
                 onSelect: (s) => setState(() {
@@ -356,61 +356,3 @@ class _ClinicOption extends StatelessWidget {
   }
 }
 
-class _SlotGrid extends StatelessWidget {
-  const _SlotGrid({
-    required this.slots,
-    required this.selected,
-    required this.onSelect,
-  });
-
-  final Future<List<String>> slots;
-  final String? selected;
-  final ValueChanged<String> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return FutureBuilder<List<String>>(
-      future: slots,
-      builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 20),
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (snap.hasError) {
-          return Text(snap.error.toString().replaceFirst('Exception: ', ''),
-              style: TextStyle(color: scheme.error));
-        }
-        final times = snap.data ?? const [];
-        if (times.isEmpty) {
-          return Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              'No open slots on this day. Try another date.',
-              style: TextStyle(color: scheme.onSurfaceVariant),
-            ),
-          );
-        }
-        return Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final t in times)
-              ChoiceChip(
-                label: Text(t),
-                selected: selected == t,
-                onSelected: (_) => onSelect(t),
-              ),
-          ],
-        );
-      },
-    );
-  }
-}

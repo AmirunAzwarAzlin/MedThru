@@ -109,6 +109,9 @@ class AppointmentStatusStyle {
       case 'cancelled':
         return const AppointmentStatusStyle(
             'Cancelled', Color(0xFF5B6B7F), Icons.event_busy_outlined);
+      case 'reschedule_requested':
+        return const AppointmentStatusStyle(
+            'Reschedule pending', Color(0xFF9C6ADE), Icons.sync_alt);
       default:
         return AppointmentStatusStyle(status, const Color(0xFF5B6B7F), Icons.event);
     }
@@ -139,6 +142,68 @@ class StatusPill extends StatelessWidget {
                   fontSize: 12, fontWeight: FontWeight.w700, color: s.color)),
         ],
       ),
+    );
+  }
+}
+
+/// A wrap of choice chips for the bookable "HH:MM" times on one day, shared
+/// by the booking flow and the reschedule flow.
+class SlotGrid extends StatelessWidget {
+  const SlotGrid({
+    super.key,
+    required this.slots,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final Future<List<String>> slots;
+  final String? selected;
+  final ValueChanged<String> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return FutureBuilder<List<String>>(
+      future: slots,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snap.hasError) {
+          return Text(snap.error.toString().replaceFirst('Exception: ', ''),
+              style: TextStyle(color: scheme.error));
+        }
+        final times = snap.data ?? const [];
+        if (times.isEmpty) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              'No open slots on this day. Try another date.',
+              style: TextStyle(color: scheme.onSurfaceVariant),
+            ),
+          );
+        }
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final t in times)
+              ChoiceChip(
+                label: Text(t),
+                selected: selected == t,
+                onSelected: (_) => onSelect(t),
+              ),
+          ],
+        );
+      },
     );
   }
 }
