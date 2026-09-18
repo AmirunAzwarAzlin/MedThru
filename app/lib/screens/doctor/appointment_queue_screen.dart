@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../api.dart';
 import '../../widgets.dart';
+import '../appointments/reschedule_screen.dart';
 
 /// Doctor-only console for ruling on appointment requests. Requests that hold a
 /// slot wait here until confirmed or rejected; the filter also surfaces the
@@ -16,6 +17,7 @@ class _AppointmentQueueScreenState extends State<AppointmentQueueScreen> {
   // Filters map to the server's status values.
   static const _filters = [
     ('requested', 'Pending'),
+    ('reschedule_requested', 'Reschedule pending'),
     ('confirmed', 'Confirmed'),
     ('completed', 'Completed'),
     ('rejected', 'Rejected'),
@@ -44,6 +46,35 @@ class _AppointmentQueueScreenState extends State<AppointmentQueueScreen> {
       setState(_load);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Appointment $verb.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
+  Future<void> _reschedule(Map<String, dynamic> appt) async {
+    final updated = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(builder: (_) => RescheduleScreen(appointment: appt)),
+    );
+    if (updated != null && mounted) {
+      setState(_load);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Reschedule proposed — waiting on the patient to confirm.')),
+      );
+    }
+  }
+
+  Future<void> _respondToReschedule(Map<String, dynamic> appt, bool accept) async {
+    try {
+      await MedThruApi.instance.respondToReschedule(appt['id'] as int, accept);
+      if (!mounted) return;
+      setState(_load);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(accept ? 'New time accepted.' : 'Kept the original time.')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -134,6 +165,17 @@ class _AppointmentQueueScreenState extends State<AppointmentQueueScreen> {
                             onCancel: (a['status'] == 'confirmed')
                                 ? () => _decide(a, 'cancelled', 'cancelled')
                                 : null,
+                            onReschedule: a['status'] == 'confirmed'
+                                ? () => _reschedule(a)
+                                : null,
+                            onAcceptReschedule:
+                                a['status'] == 'reschedule_requested' && a['proposed_by'] == 'patient'
+                                    ? () => _respondToReschedule(a, true)
+                                    : null,
+                            onDeclineReschedule:
+                                a['status'] == 'reschedule_requested' && a['proposed_by'] == 'patient'
+                                    ? () => _respondToReschedule(a, false)
+                                    : null,
                           ),
                       ],
                     );
@@ -155,6 +197,9 @@ class _QueueCard extends StatelessWidget {
     this.onReject,
     this.onComplete,
     this.onCancel,
+    this.onReschedule,
+    this.onAcceptReschedule,
+    this.onDeclineReschedule,
   });
 
   final Map<String, dynamic> appt;
@@ -162,6 +207,9 @@ class _QueueCard extends StatelessWidget {
   final VoidCallback? onReject;
   final VoidCallback? onComplete;
   final VoidCallback? onCancel;
+  final VoidCallback? onReschedule;
+  final VoidCallback? onAcceptReschedule;
+  final VoidCallback? onDeclineReschedule;
 
   @override
   Widget build(BuildContext context) {
@@ -170,7 +218,10 @@ class _QueueCard extends StatelessWidget {
     final hasActions = onConfirm != null ||
         onReject != null ||
         onComplete != null ||
-        onCancel != null;
+        onCancel != null ||
+        onReschedule != null ||
+        onAcceptReschedule != null ||
+        onDeclineReschedule != null;
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: Padding(
@@ -202,6 +253,11 @@ class _QueueCard extends StatelessWidget {
               const SizedBox(height: 4),
               _line(scheme, Icons.notes, reason),
             ],
+            if (appt['status'] == 'reschedule_requested' && appt['proposed_starts_at'] != null) ...[
+              const SizedBox(height: 4),
+              _line(scheme, Icons.sync_alt,
+                  'Patient proposed ${formatAppointmentTime(appt['proposed_starts_at'] as String)}'),
+            ],
             if (hasActions) ...[
               const Divider(height: 22),
               Wrap(
@@ -209,6 +265,26 @@ class _QueueCard extends StatelessWidget {
                 runSpacing: 4,
                 alignment: WrapAlignment.end,
                 children: [
+                  if (onDeclineReschedule != null)
+                    TextButton.icon(
+                      onPressed: onDeclineReschedule,
+                      icon: const Icon(Icons.close, size: 18),
+                      label: const Text('Keep original time'),
+                      style: TextButton.styleFrom(foregroundColor: scheme.error),
+                    ),
+                  if (onAcceptReschedule != null)
+                    FilledButton.icon(
+                      onPressed: onAcceptReschedule,
+                      icon: const Icon(Icons.check, size: 18),
+                      label: const Text('Accept new time'),
+                      style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
+                    ),
+                  if (onReschedule != null)
+                    TextButton.icon(
+                      onPressed: onReschedule,
+                      icon: const Icon(Icons.sync_alt, size: 18),
+                      label: const Text('Propose reschedule'),
+                    ),
                   if (onReject != null)
                     TextButton.icon(
                       onPressed: onReject,
