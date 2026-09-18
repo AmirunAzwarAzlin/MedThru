@@ -1120,12 +1120,14 @@ const APPOINTMENT_SELECT = `
          clinics.kind    AS clinic_kind,
          clinics.address AS clinic_address,
          clinics.phone   AS clinic_phone,
-         patients.full_name AS patient_name,
-         doctors.name    AS decided_by_name
+         patients.full_name   AS patient_name,
+         assigned_doctor.name AS doctor_name,
+         decided_doctor.name  AS decided_by_name
   FROM appointments
   JOIN clinics  ON clinics.id  = appointments.clinic_id
   JOIN patients ON patients.id = appointments.patient_id
-  LEFT JOIN doctors ON doctors.id = appointments.decided_by
+  LEFT JOIN doctors AS assigned_doctor ON assigned_doctor.id = appointments.doctor_id
+  LEFT JOIN doctors AS decided_doctor  ON decided_doctor.id  = appointments.decided_by
 `;
 
 function appointmentById(id) {
@@ -1166,13 +1168,18 @@ function pctDelta(current, previous) {
   return Math.round(((current - previous) / previous) * 100);
 }
 
-/// The "HH:MM" times already held by live appointments at a clinic on a date.
-function heldTimes(clinicId, dateStr) {
+/// The "HH:MM" times already held by live appointments at a clinic on a
+/// date. Scoped to one doctor's day when `doctorId` is given, so two doctors
+/// at the same clinic don't block each other's slots.
+function heldTimes(clinicId, dateStr, doctorId) {
+  const doctorClause = doctorId ? ' AND doctor_id = ?' : '';
+  const params = [clinicId, `${dateStr}%`, ...HELD_STATUSES];
+  if (doctorId) params.push(doctorId);
   return db.prepare(
     `SELECT starts_at FROM appointments
-     WHERE clinic_id = ? AND starts_at LIKE ? AND status IN (${HELD_PLACEHOLDERS})`
+     WHERE clinic_id = ? AND starts_at LIKE ? AND status IN (${HELD_PLACEHOLDERS})${doctorClause}`
   )
-    .all(clinicId, `${dateStr}%`, ...HELD_STATUSES)
+    .all(...params)
     .map((row) => row.starts_at.slice(11, 16));
 }
 
@@ -1241,10 +1248,11 @@ app.get('/api/clinics/:id/availability', (req, res) => {
     return res.status(400).json({ error: 'date must look like "YYYY-MM-DD"' });
   }
 
+  const doctorId = req.query.doctorId ? Number(req.query.doctorId) : undefined;
   res.json({
     clinic,
     date,
-    slots: availableSlots(clinic, date, heldTimes(clinic.id, date)),
+    slots: availableSlots(clinic, date, heldTimes(clinic.id, date, doctorId)),
   });
 });
 
@@ -1259,6 +1267,16 @@ app.post('/api/patients/token/:token/appointments', lookupLimiter, (req, res) =>
     return res.status(404).json({ error: 'Clinic not found' });
   }
 
+  let doctorId = null;
+  if (req.body.doctorId !== undefined && req.body.doctorId !== null) {
+    const doctor = db.prepare(`SELECT id FROM doctors WHERE id = ? AND clinic_id = ?`)
+      .get(Number(req.body.doctorId), clinic.id);
+    if (!doctor) {
+      return res.status(400).json({ error: 'doctorId must be a doctor at this clinic' });
+    }
+    doctorId = doctor.id;
+  }
+
   const startsAt = normalizeStartsAt(req.body.startsAt);
   const problem = bookingError(clinic, startsAt);
   if (problem) {
@@ -1268,11 +1286,12 @@ app.post('/api/patients/token/:token/appointments', lookupLimiter, (req, res) =>
   let result;
   try {
     result = db.prepare(
-      `INSERT INTO appointments (patient_id, clinic_id, starts_at, slot_minutes, reason)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO appointments (patient_id, clinic_id, doctor_id, starts_at, slot_minutes, reason)
+       VALUES (?, ?, ?, ?, ?, ?)`
     ).run(
       patient.id,
       clinic.id,
+      doctorId,
       startsAt,
       clinic.slot_minutes,
       optionalText(req.body.reason),

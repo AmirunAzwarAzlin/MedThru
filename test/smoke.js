@@ -217,6 +217,72 @@ async function main() {
     );
     assert(res.status === 200, 'cancel the appointment');
 
+    // Two doctors at the same clinic must not block each other's slots, and
+    // booking against one doctor should not show up as held time for the
+    // other.
+    res = await fetch(`${BASE}/auth/register-doctor`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Second CI Doctor',
+        licenseNumber: 'CI-002',
+        email: 'ci2@medthru.test',
+        password: 'ci-password-123',
+      }),
+    });
+    const { token: token2 } = await res.json();
+    await fetch(`${BASE}/auth/me`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token2}` },
+      body: JSON.stringify({ clinicId: clinic.id }),
+    });
+    res = await fetch(`${BASE}/clinics/${clinic.id}/doctors`);
+    const twoDoctors = await res.json();
+    const doctorA = twoDoctors.find((d) => d.name === 'CI Doctor');
+    const doctorB = twoDoctors.find((d) => d.name === 'Second CI Doctor');
+
+    res = await fetch(`${BASE}/clinics/${clinic.id}/availability?date=${aWeekOut}&doctorId=${doctorA.id}`);
+    const { slots: doctorASlots } = await res.json();
+    const pickedSlot = doctorASlots[0];
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/appointments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clinicId: clinic.id, doctorId: doctorA.id,
+        startsAt: `${aWeekOut} ${pickedSlot}`, reason: 'Doctor-scoped booking test',
+      }),
+    });
+    assert(res.status === 201, 'book against a specific doctor at the clinic');
+    const doctorABooking = await res.json();
+    assert(doctorABooking.doctor_id === doctorA.id, 'the booking records the chosen doctor');
+    assert(doctorABooking.doctor_name === 'CI Doctor', 'the booking response includes the doctor name');
+
+    res = await fetch(`${BASE}/clinics/${clinic.id}/availability?date=${aWeekOut}&doctorId=${doctorB.id}`);
+    const { slots: doctorBSlots } = await res.json();
+    assert(doctorBSlots.includes(pickedSlot),
+      "doctor B's availability is unaffected by doctor A's booking");
+
+    res = await fetch(`${BASE}/clinics/${clinic.id}/availability?date=${aWeekOut}&doctorId=${doctorA.id}`);
+    const { slots: doctorASlotsAfter } = await res.json();
+    assert(!doctorASlotsAfter.includes(pickedSlot),
+      "doctor A's own availability no longer offers the booked slot");
+
+    // The real regression test: doctor B must be able to actually book the
+    // exact same wall-clock slot doctor A just took. A clinic-wide unique
+    // index (rather than one scoped by doctor) would make this 409 even
+    // though it should succeed — two different doctors, two different rooms.
+    res = await fetch(`${BASE}/patients/token/${cardToken}/appointments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clinicId: clinic.id, doctorId: doctorB.id,
+        startsAt: `${aWeekOut} ${pickedSlot}`, reason: 'Concurrent booking with a different doctor',
+      }),
+    });
+    assert(res.status === 201,
+      'doctor B can book the identical time slot doctor A already holds');
+
     console.log('\nAll smoke checks passed.');
   } finally {
     proc.kill();
