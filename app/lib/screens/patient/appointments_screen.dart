@@ -27,7 +27,10 @@ class AppointmentsScreen extends StatefulWidget {
 }
 
 class _AppointmentsScreenState extends State<AppointmentsScreen> {
-  static const _cancellable = {'requested', 'confirmed'};
+  // A pending reschedule still holds its original slot, so it is still a live
+  // appointment the patient may call off outright rather than having to settle
+  // the reschedule first.
+  static const _cancellable = {'requested', 'confirmed', 'reschedule_requested'};
   late Future<List<Map<String, dynamic>>> _appointments;
 
   /// Appointment ids with an on-device reminder currently scheduled.

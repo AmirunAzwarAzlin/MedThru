@@ -162,7 +162,11 @@ class _AppointmentQueueScreenState extends State<AppointmentQueueScreen> {
                             onComplete: a['status'] == 'confirmed'
                                 ? () => _decide(a, 'completed', 'marked complete')
                                 : null,
-                            onCancel: (a['status'] == 'confirmed')
+                            // A pending reschedule still holds its original
+                            // slot, so it can be called off without settling
+                            // the proposal first.
+                            onCancel: (a['status'] == 'confirmed' ||
+                                    a['status'] == 'reschedule_requested')
                                 ? () => _decide(a, 'cancelled', 'cancelled')
                                 : null,
                             onReschedule: a['status'] == 'confirmed'
@@ -253,10 +257,22 @@ class _QueueCard extends StatelessWidget {
               const SizedBox(height: 4),
               _line(scheme, Icons.notes, reason),
             ],
-            if (appt['status'] == 'reschedule_requested' && appt['proposed_starts_at'] != null) ...[
+            // Both sides can propose, and both land in this tab — so say which
+            // one did, rather than crediting the patient for the doctor's own
+            // proposal.
+            if (appt['status'] == 'reschedule_requested' &&
+                appt['proposed_starts_at'] != null &&
+                appt['proposed_by'] == 'patient') ...[
               const SizedBox(height: 4),
               _line(scheme, Icons.sync_alt,
                   'Patient proposed ${formatAppointmentTime(appt['proposed_starts_at'] as String)}'),
+            ],
+            if (appt['status'] == 'reschedule_requested' &&
+                appt['proposed_starts_at'] != null &&
+                appt['proposed_by'] == 'doctor') ...[
+              const SizedBox(height: 4),
+              _line(scheme, Icons.sync_alt,
+                  'You proposed ${formatAppointmentTime(appt['proposed_starts_at'] as String)}'),
             ],
             if (hasActions) ...[
               const Divider(height: 22),

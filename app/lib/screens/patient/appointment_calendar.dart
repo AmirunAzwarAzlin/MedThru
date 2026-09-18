@@ -391,9 +391,14 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
   }
 
   /// Confirmed appointments read as "locked in" (blue); anything still just
-  /// requested is amber; a day with only past/closed ones is muted.
+  /// requested is amber; a day with only past/closed ones is muted. An
+  /// appointment with a reschedule pending still holds this slot, so it reads
+  /// as locked in too — the day is genuinely spoken for until someone responds.
   Color _dotColor(List<Map<String, dynamic>> appts) {
-    if (appts.any((a) => a['status'] == 'confirmed')) return MedThruTheme.blue;
+    if (appts.any((a) =>
+        a['status'] == 'confirmed' || a['status'] == 'reschedule_requested')) {
+      return MedThruTheme.blue;
+    }
     if (appts.any((a) => a['status'] == 'requested')) {
       return MedThruTheme.amber;
     }
@@ -497,7 +502,11 @@ class _AppointmentCalendarCardState extends State<AppointmentCalendarCard> {
     for (final list in _byDay.values) {
       for (final a in list) {
         final status = a['status'];
-        if (status != 'confirmed' && status != 'requested') continue;
+        if (status != 'confirmed' &&
+            status != 'requested' &&
+            status != 'reschedule_requested') {
+          continue;
+        }
         final dt = DateTime.tryParse(
           (a['starts_at'] as String).replaceFirst(' ', 'T'),
         );

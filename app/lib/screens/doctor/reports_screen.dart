@@ -327,6 +327,7 @@ class _TopConditions extends StatelessWidget {
 const _statusOrder = [
   'requested',
   'confirmed',
+  'reschedule_requested',
   'completed',
   'cancelled',
   'rejected',
@@ -334,6 +335,7 @@ const _statusOrder = [
 const _statusLabels = {
   'requested': 'Pending',
   'confirmed': 'Confirmed',
+  'reschedule_requested': 'Reschedule pending',
   'completed': 'Completed',
   'cancelled': 'Cancelled',
   'rejected': 'Rejected',
@@ -345,6 +347,10 @@ Color _statusColor(String s) {
       return MedThruTheme.green;
     case 'confirmed':
       return MedThruTheme.teal;
+    case 'reschedule_requested':
+      // The same violet the status pill uses in widgets.dart, so a reschedule
+      // reads as its own thing here rather than as muted-grey "other".
+      return const Color(0xFF9C6ADE);
     case 'requested':
       return MedThruTheme.amber;
     case 'rejected':
