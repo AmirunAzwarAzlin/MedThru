@@ -16,6 +16,8 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _phone = TextEditingController();
+  late Future<List<Map<String, dynamic>>> _clinics;
+  int? _clinicId;
   bool _savingProfile = false;
   String? _profileError;
 
@@ -32,6 +34,9 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
     _name.text = doctor?['name'] as String? ?? '';
     _email.text = doctor?['email'] as String? ?? '';
     _phone.text = doctor?['phone'] as String? ?? '';
+    _clinicId = doctor?['clinic_id'] as int?;
+    _clinics = _api.getClinics();
+    _clinics.ignore();
   }
 
   @override
@@ -59,6 +64,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         name: _name.text.trim(),
         email: _email.text.trim(),
         phone: _phone.text.trim(),
+        clinicId: _clinicId,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -139,6 +145,29 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                 labelText: 'Phone number',
                 prefixIcon: Icon(Icons.phone_outlined),
               ),
+            ),
+            const SizedBox(height: 12),
+            Text('Clinic',
+                style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
+            const SizedBox(height: 6),
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: _clinics,
+              builder: (context, snap) {
+                final clinics = snap.data ?? const [];
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final c in clinics)
+                      ChoiceChip(
+                        label: Text(c['name'] as String),
+                        selected: _clinicId == c['id'],
+                        onSelected: (selected) =>
+                            setState(() => _clinicId = selected ? c['id'] as int : null),
+                      ),
+                  ],
+                );
+              },
             ),
             if (_profileError != null) ...[
               const SizedBox(height: 12),
