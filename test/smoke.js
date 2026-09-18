@@ -306,6 +306,138 @@ async function main() {
     });
     assert(res.status === 400, 'booking rejects a doctorId that does not exist');
 
+    // Reschedule: patient proposes, doctor accepts.
+    res = await fetch(`${BASE}/patients/token/${cardToken}/appointments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clinicId: clinic.id, doctorId: doctorA.id,
+        startsAt: `${aWeekOut} ${doctorASlotsAfter[0]}`, reason: 'Reschedule flow test',
+      }),
+    });
+    const rescheduleTarget = await res.json();
+    await fetch(`${BASE}/appointments/${rescheduleTarget.id}/decision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ status: 'confirmed' }),
+    });
+
+    res = await fetch(`${BASE}/clinics/${clinic.id}/availability?date=${aWeekOut}&doctorId=${doctorA.id}`);
+    const { slots: freshSlots } = await res.json();
+    const newTime = freshSlots[0];
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/appointments/${rescheduleTarget.id}/reschedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ startsAt: `${aWeekOut} ${newTime}` }),
+    });
+    assert(res.status === 200, 'patient proposes a reschedule');
+    let updated = await res.json();
+    assert(updated.status === 'reschedule_requested', 'status moves to reschedule_requested');
+    assert(updated.proposed_by === 'patient', 'proposed_by records the patient');
+
+    // The original slot must still be held: a second patient cannot book it.
+    res = await fetch(`${BASE}/patients`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ full_name: 'Second CI Patient' }),
+    });
+    const { cardToken: cardToken2 } = await res.json();
+    res = await fetch(`${BASE}/patients/token/${cardToken2}/appointments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clinicId: clinic.id, doctorId: doctorA.id,
+        startsAt: rescheduleTarget.starts_at, reason: 'Should be blocked',
+      }),
+    });
+    assert(res.status === 409, "a reschedule_requested appointment's original slot stays held");
+
+    res = await fetch(`${BASE}/appointments/${rescheduleTarget.id}/reschedule/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ accept: true }),
+    });
+    assert(res.status === 200, 'doctor accepts the patient-proposed reschedule');
+    updated = await res.json();
+    assert(updated.status === 'confirmed', 'accepted reschedule returns to confirmed');
+    assert(updated.starts_at === `${aWeekOut} ${newTime}`, 'starts_at moved to the proposed time');
+    assert(updated.proposed_starts_at === null, 'proposed_starts_at is cleared after accept');
+
+    // Reschedule: doctor proposes, patient rejects -> original time stays.
+    res = await fetch(`${BASE}/appointments/${rescheduleTarget.id}/reschedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ startsAt: `${aWeekOut} ${freshSlots[1] ?? freshSlots[0]}` }),
+    });
+    assert(res.status === 200, 'doctor proposes a reschedule');
+    const beforeReject = await res.json();
+    assert(beforeReject.proposed_by === 'doctor', 'proposed_by records the doctor');
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/appointments/${rescheduleTarget.id}/reschedule/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accept: false }),
+    });
+    assert(res.status === 200, 'patient rejects the doctor-proposed reschedule');
+    const afterReject = await res.json();
+    assert(afterReject.status === 'confirmed', 'rejected reschedule returns to confirmed');
+    assert(afterReject.starts_at === updated.starts_at, 'starts_at is unchanged after a rejection');
+    assert(afterReject.proposed_by === null, 'proposed_by is cleared after a rejection');
+
+    // Reschedule: patient proposes, doctor rejects -> original time stays.
+    // Covers the two role/response combinations the assertions above don't:
+    // a doctor calling /respond with accept:false, and (next) a patient
+    // calling /respond with accept:true.
+    res = await fetch(`${BASE}/clinics/${clinic.id}/availability?date=${aWeekOut}&doctorId=${doctorA.id}`);
+    const { slots: slotsBeforePatientPropose } = await res.json();
+    res = await fetch(`${BASE}/patients/token/${cardToken}/appointments/${rescheduleTarget.id}/reschedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ startsAt: `${aWeekOut} ${slotsBeforePatientPropose[0]}` }),
+    });
+    assert(res.status === 200, 'patient proposes a second reschedule');
+
+    res = await fetch(`${BASE}/appointments/${rescheduleTarget.id}/reschedule/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ accept: false }),
+    });
+    assert(res.status === 200, 'doctor rejects the patient-proposed reschedule');
+    const afterDoctorReject = await res.json();
+    assert(afterDoctorReject.status === 'confirmed', 'doctor-rejected reschedule returns to confirmed');
+    assert(afterDoctorReject.starts_at === afterReject.starts_at,
+      "starts_at is unchanged after the doctor's rejection");
+
+    // Reschedule: doctor proposes, patient accepts -> new time takes effect.
+    res = await fetch(`${BASE}/clinics/${clinic.id}/availability?date=${aWeekOut}&doctorId=${doctorA.id}`);
+    const { slots: slotsBeforeDoctorPropose } = await res.json();
+    res = await fetch(`${BASE}/appointments/${rescheduleTarget.id}/reschedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ startsAt: `${aWeekOut} ${slotsBeforeDoctorPropose[0]}` }),
+    });
+    assert(res.status === 200, 'doctor proposes a second reschedule');
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/appointments/${rescheduleTarget.id}/reschedule/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accept: true }),
+    });
+    assert(res.status === 200, 'patient accepts the doctor-proposed reschedule');
+    const afterPatientAccept = await res.json();
+    assert(afterPatientAccept.status === 'confirmed', 'patient-accepted reschedule returns to confirmed');
+    assert(afterPatientAccept.starts_at === `${aWeekOut} ${slotsBeforeDoctorPropose[0]}`,
+      "starts_at moved to the doctor's proposed time");
+
+    // Cross-patient scoping: card B cannot touch card A's appointment.
+    res = await fetch(`${BASE}/patients/token/${cardToken2}/appointments/${rescheduleTarget.id}/reschedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ startsAt: `${aWeekOut} 09:00` }),
+    });
+    assert(res.status === 404, "another patient's card cannot propose a reschedule on this appointment");
+
     console.log('\nAll smoke checks passed.');
   } finally {
     proc.kill();

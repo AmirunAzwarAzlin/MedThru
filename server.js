@@ -1609,6 +1609,155 @@ app.post('/api/appointments/:id/decision', requireDoctor, (req, res) => {
   res.json(appointmentById(appointment.id));
 });
 
+// --- Appointment rescheduling ---
+//
+// A confirmed appointment can be moved by either side proposing a new time;
+// the other side must accept or reject before it takes effect. The original
+// slot stays held throughout (see the reschedule_requested entry in
+// HELD_STATUSES) so nobody else can grab it out from under the pending
+// change.
+
+/// Applies a reschedule response. Returns `null` on success, or
+/// `{ status, error }` if accepting lost a race for the new slot — the
+/// caller relays that straight back as the HTTP response.
+function respondToReschedule(appointment, accept, doctorId, patientId) {
+  if (!accept) {
+    db.prepare(
+      `UPDATE appointments
+       SET status = 'confirmed', proposed_starts_at = NULL, proposed_by = NULL,
+           reschedule_reason = NULL, updated_at = datetime('now')
+       WHERE id = ?`
+    ).run(appointment.id);
+    logAudit(patientId, doctorId, 'appointment_reschedule_declined',
+      `Kept original time ${appointment.starts_at}`);
+    return null;
+  }
+
+  try {
+    db.prepare(
+      `UPDATE appointments
+       SET status = 'confirmed', starts_at = proposed_starts_at,
+           proposed_starts_at = NULL, proposed_by = NULL, reschedule_reason = NULL,
+           decided_by = ?, decided_at = datetime('now'), updated_at = datetime('now')
+       WHERE id = ?`
+    ).run(doctorId, appointment.id);
+  } catch (err) {
+    if (String(err.message).includes('UNIQUE')) {
+      return { status: 409, error: 'That slot has just been taken. Please choose another time.' };
+    }
+    throw err;
+  }
+  logAudit(patientId, doctorId, 'appointment_reschedule_accepted',
+    `Moved to ${appointment.proposed_starts_at}`);
+  return null;
+}
+
+app.post('/api/patients/token/:token/appointments/:id/reschedule', lookupLimiter, (req, res) => {
+  const patient = resolvePatientFromReq(req);
+  if (!patient) {
+    return res.status(404).json({ error: 'No patient found for this card' });
+  }
+
+  const appointment = db.prepare(
+    `SELECT * FROM appointments WHERE id = ? AND patient_id = ?`
+  ).get(req.params.id, patient.id);
+  if (!appointment) {
+    return res.status(404).json({ error: 'Appointment not found' });
+  }
+
+  const allowed = ALLOWED_TRANSITIONS[appointment.status] ?? [];
+  if (!allowed.includes('reschedule_requested')) {
+    return res.status(409).json({
+      error: `An appointment that is ${appointment.status} cannot be rescheduled.`,
+    });
+  }
+
+  const clinic = db.prepare(`SELECT * FROM clinics WHERE id = ?`).get(appointment.clinic_id);
+  const startsAt = normalizeStartsAt(req.body.startsAt);
+  const problem = bookingError(clinic, startsAt);
+  if (problem) {
+    return res.status(400).json({ error: problem });
+  }
+
+  db.prepare(
+    `UPDATE appointments
+     SET status = 'reschedule_requested', proposed_starts_at = ?, proposed_by = 'patient',
+         reschedule_reason = ?, updated_at = datetime('now')
+     WHERE id = ?`
+  ).run(startsAt, optionalText(req.body.reason), appointment.id);
+
+  logAudit(patient.id, null, 'appointment_reschedule_proposed',
+    `Patient proposed moving ${appointment.starts_at} to ${startsAt}`);
+  res.json(appointmentById(appointment.id));
+});
+
+app.post('/api/appointments/:id/reschedule', requireDoctor, (req, res) => {
+  const appointment = db.prepare(`SELECT * FROM appointments WHERE id = ?`).get(req.params.id);
+  if (!appointment) {
+    return res.status(404).json({ error: 'Appointment not found' });
+  }
+
+  const allowed = ALLOWED_TRANSITIONS[appointment.status] ?? [];
+  if (!allowed.includes('reschedule_requested')) {
+    return res.status(409).json({
+      error: `An appointment that is ${appointment.status} cannot be rescheduled.`,
+    });
+  }
+
+  const clinic = db.prepare(`SELECT * FROM clinics WHERE id = ?`).get(appointment.clinic_id);
+  const startsAt = normalizeStartsAt(req.body.startsAt);
+  const problem = bookingError(clinic, startsAt);
+  if (problem) {
+    return res.status(400).json({ error: problem });
+  }
+
+  db.prepare(
+    `UPDATE appointments
+     SET status = 'reschedule_requested', proposed_starts_at = ?, proposed_by = 'doctor',
+         reschedule_reason = ?, updated_at = datetime('now')
+     WHERE id = ?`
+  ).run(startsAt, optionalText(req.body.reason), appointment.id);
+
+  logAudit(appointment.patient_id, req.doctor.id, 'appointment_reschedule_proposed',
+    `Doctor proposed moving ${appointment.starts_at} to ${startsAt}`);
+  res.json(appointmentById(appointment.id));
+});
+
+app.post('/api/patients/token/:token/appointments/:id/reschedule/respond', lookupLimiter, (req, res) => {
+  const patient = resolvePatientFromReq(req);
+  if (!patient) {
+    return res.status(404).json({ error: 'No patient found for this card' });
+  }
+
+  const appointment = db.prepare(
+    `SELECT * FROM appointments WHERE id = ? AND patient_id = ?`
+  ).get(req.params.id, patient.id);
+  if (!appointment) {
+    return res.status(404).json({ error: 'Appointment not found' });
+  }
+  if (appointment.status !== 'reschedule_requested' || appointment.proposed_by !== 'doctor') {
+    return res.status(409).json({ error: 'No doctor-proposed reschedule is pending on this appointment.' });
+  }
+
+  const err = respondToReschedule(appointment, !!req.body.accept, null, patient.id);
+  if (err) return res.status(err.status).json({ error: err.error });
+  res.json(appointmentById(appointment.id));
+});
+
+app.post('/api/appointments/:id/reschedule/respond', requireDoctor, (req, res) => {
+  const appointment = db.prepare(`SELECT * FROM appointments WHERE id = ?`).get(req.params.id);
+  if (!appointment) {
+    return res.status(404).json({ error: 'Appointment not found' });
+  }
+  if (appointment.status !== 'reschedule_requested' || appointment.proposed_by !== 'patient') {
+    return res.status(409).json({ error: 'No patient-proposed reschedule is pending on this appointment.' });
+  }
+
+  const err = respondToReschedule(appointment, !!req.body.accept, req.doctor.id, appointment.patient_id);
+  if (err) return res.status(err.status).json({ error: err.error });
+  res.json(appointmentById(appointment.id));
+});
+
 // --- NFC tap broadcast ---
 //
 // reader.js runs as a separate process from the app — it's the only thing
