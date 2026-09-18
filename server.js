@@ -26,6 +26,8 @@ const {
   normalizeStartsAt,
   toDateString,
 } = require('./appointments');
+const { urgencyTag, rankCandidates } = require('./reschedule');
+const { rationalizeCandidates } = require('./gemini');
 
 const app = express();
 // Documents arrive as base64 inside JSON, so the body limit has to clear a
@@ -1756,6 +1758,97 @@ app.post('/api/appointments/:id/reschedule/respond', requireDoctor, (req, res) =
   const err = respondToReschedule(appointment, !!req.body.accept, req.doctor.id, appointment.patient_id);
   if (err) return res.status(err.status).json({ error: err.error });
   res.json(appointmentById(appointment.id));
+});
+
+/// Average confirmed/completed appointments per day this doctor has actually
+/// run over the last 30 days. Zero (meaning "no penalty applied") until
+/// there's enough history to call anything "typical".
+function averageDailyLoad(doctorId) {
+  const row = db.prepare(
+    `SELECT COUNT(*) AS n, COUNT(DISTINCT substr(starts_at, 1, 10)) AS days
+     FROM appointments
+     WHERE doctor_id = ? AND status IN ('confirmed', 'completed')
+       AND starts_at >= datetime('now', '-30 days')`
+  ).get(doctorId);
+  return row.days > 0 ? row.n / row.days : 0;
+}
+
+function templatedRationale(candidate) {
+  return candidate.clinicFit >= 80
+    ? 'Fills an open slot in the schedule.'
+    : 'Closest match to your original time.';
+}
+
+/// Builds the ranked, narrated suggestion list for one appointment. Shared by
+/// both the patient-token and doctor-auth suggestions routes below.
+async function buildRescheduleSuggestions(appointment) {
+  const clinic = db.prepare(`SELECT * FROM clinics WHERE id = ?`).get(appointment.clinic_id);
+  const patient = db.prepare(`SELECT * FROM patients WHERE id = ?`).get(appointment.patient_id);
+  const hasChronicCondition = !!(patient.conditions && patient.conditions.trim());
+  const tag = urgencyTag(appointment.reason, hasChronicCondition);
+
+  const [origDate] = appointment.starts_at.split(' ');
+  const start = new Date(`${origDate}T00:00:00`);
+  const sameDayBookedTimesByDate = {};
+  const candidates = [];
+  for (let i = 1; i <= 14; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    const dateStr = toDateString(d);
+    const taken = heldTimes(clinic.id, dateStr, appointment.doctor_id || undefined);
+    sameDayBookedTimesByDate[dateStr] = taken;
+    for (const time of availableSlots(clinic, dateStr, taken)) {
+      candidates.push(`${dateStr} ${time}`);
+    }
+  }
+
+  const typicalDailyLoad = appointment.doctor_id ? averageDailyLoad(appointment.doctor_id) : 0;
+
+  const ranked = rankCandidates({
+    originalStartsAt: appointment.starts_at,
+    candidates,
+    tag,
+    sameDayBookedTimesByDate,
+    slotMinutes: clinic.slot_minutes,
+    typicalDailyLoad,
+    now: new Date(),
+    limit: 5,
+  });
+
+  const aiSuggestions = await rationalizeCandidates({
+    originalStartsAt: appointment.starts_at,
+    urgencyTag: tag,
+    candidates: ranked,
+  });
+
+  return ranked.map((r, i) => ({
+    startsAt: r.startsAt,
+    patientFit: r.patientFit,
+    clinicFit: r.clinicFit,
+    rationale: aiSuggestions?.[i]?.rationale ?? templatedRationale(r),
+  }));
+}
+
+app.get('/api/patients/token/:token/appointments/:id/reschedule/suggestions', lookupLimiter, async (req, res) => {
+  const patient = resolvePatientFromReq(req);
+  if (!patient) {
+    return res.status(404).json({ error: 'No patient found for this card' });
+  }
+  const appointment = db.prepare(
+    `SELECT * FROM appointments WHERE id = ? AND patient_id = ?`
+  ).get(req.params.id, patient.id);
+  if (!appointment) {
+    return res.status(404).json({ error: 'Appointment not found' });
+  }
+  res.json({ suggestions: await buildRescheduleSuggestions(appointment) });
+});
+
+app.get('/api/appointments/:id/reschedule/suggestions', requireDoctor, async (req, res) => {
+  const appointment = db.prepare(`SELECT * FROM appointments WHERE id = ?`).get(req.params.id);
+  if (!appointment) {
+    return res.status(404).json({ error: 'Appointment not found' });
+  }
+  res.json({ suggestions: await buildRescheduleSuggestions(appointment) });
 });
 
 // --- NFC tap broadcast ---

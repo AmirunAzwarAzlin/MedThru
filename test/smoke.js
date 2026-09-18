@@ -438,6 +438,47 @@ async function main() {
     });
     assert(res.status === 404, "another patient's card cannot propose a reschedule on this appointment");
 
+    // Suggestions: works for the doctor-scoped booking (doctorA), and for an
+    // appointment with no doctor assigned at all (clinic-wide fallback).
+    res = await fetch(`${BASE}/appointments/${rescheduleTarget.id}/reschedule/suggestions`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assert(res.status === 200, 'doctor fetches reschedule suggestions');
+    const { suggestions } = await res.json();
+    assert(Array.isArray(suggestions) && suggestions.length > 0, 'suggestions is a non-empty array');
+    assert(suggestions.every((s) => typeof s.startsAt === 'string' && typeof s.rationale === 'string'),
+      'every suggestion has a startsAt and a rationale');
+    // Use afterPatientAccept, not rescheduleTarget, for the current starts_at:
+    // rescheduleTarget is the stale value captured right after booking, and
+    // this appointment has moved twice since (Task 6's accept/reject dance).
+    assert(!suggestions.some((s) => s.startsAt === afterPatientAccept.starts_at),
+      'suggestions never include the slot already held by this appointment');
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/appointments/${rescheduleTarget.id}/reschedule/suggestions`);
+    assert(res.status === 200, 'patient fetches the same suggestions via their card');
+
+    // No-doctor appointment still gets clinic-wide suggestions without erroring.
+    res = await fetch(`${BASE}/patients/token/${cardToken}/appointments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clinicId: clinic.id,
+        startsAt: `${aWeekOut} ${freshSlots[freshSlots.length - 1]}`,
+        reason: 'No doctor assigned',
+      }),
+    });
+    const noDoctorAppt = await res.json();
+    await fetch(`${BASE}/appointments/${noDoctorAppt.id}/decision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ status: 'confirmed' }),
+    });
+    res = await fetch(`${BASE}/patients/token/${cardToken}/appointments/${noDoctorAppt.id}/reschedule/suggestions`);
+    assert(res.status === 200, 'an appointment with no assigned doctor still returns suggestions');
+    const { suggestions: fallbackSuggestions } = await res.json();
+    assert(Array.isArray(fallbackSuggestions) && fallbackSuggestions.length > 0,
+      'clinic-wide fallback suggestions are non-empty');
+
     console.log('\nAll smoke checks passed.');
   } finally {
     proc.kill();
