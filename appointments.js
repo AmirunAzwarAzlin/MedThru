@@ -8,7 +8,7 @@
 /// Statuses that occupy a slot. A request holds its slot while it waits for a
 /// doctor, so nobody else is offered it; cancelling or rejecting frees it
 /// again with no extra bookkeeping.
-const HELD_STATUSES = ['requested', 'confirmed'];
+const HELD_STATUSES = ['requested', 'confirmed', 'reschedule_requested'];
 
 const STATUSES = [
   'requested', 'confirmed', 'rejected', 'cancelled', 'completed',
@@ -23,7 +23,8 @@ const DOCTOR_DECISIONS = ['confirmed', 'rejected', 'cancelled', 'completed'];
 /// listed here (rejected, cancelled, completed) is final.
 const ALLOWED_TRANSITIONS = {
   requested: ['confirmed', 'rejected', 'cancelled'],
-  confirmed: ['cancelled', 'completed'],
+  confirmed: ['cancelled', 'completed', 'reschedule_requested'],
+  reschedule_requested: ['confirmed', 'cancelled'],
 };
 
 const KINDS = ['hospital', 'clinic'];

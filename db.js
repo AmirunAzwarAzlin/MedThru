@@ -297,6 +297,10 @@ function doctorColumns() {
   return db.prepare(`PRAGMA table_info(doctors)`).all().map((c) => c.name);
 }
 
+function appointmentColumns() {
+  return db.prepare(`PRAGMA table_info(appointments)`).all().map((c) => c.name);
+}
+
 // --- Migration: doctor phone number ---
 {
   if (!doctorColumns().includes('phone')) {
@@ -355,6 +359,62 @@ function doctorColumns() {
       db.exec(`ALTER TABLE patients ADD COLUMN ${name} ${type}`);
     }
   }
+}
+
+// --- Migration: doctor-clinic assignment, for per-doctor scheduling ---
+{
+  if (!doctorColumns().includes('clinic_id')) {
+    db.exec(`ALTER TABLE doctors ADD COLUMN clinic_id INTEGER REFERENCES clinics(id)`);
+  }
+}
+
+// --- Migration: appointment rescheduling ---
+//
+// doctor_id is nullable so existing appointments (booked before a doctor was
+// picked at booking time) keep working — the reschedule suggestion engine
+// falls back to clinic-wide scoring for those. proposed_starts_at/proposed_by/
+// reschedule_reason hold a pending reschedule; all three are cleared again
+// once it's accepted or rejected. See appointments.js for the accompanying
+// HELD_STATUSES/ALLOWED_TRANSITIONS change this depends on.
+{
+  const cols = appointmentColumns();
+  if (!cols.includes('doctor_id')) {
+    db.exec(`ALTER TABLE appointments ADD COLUMN doctor_id INTEGER REFERENCES doctors(id)`);
+  }
+  if (!cols.includes('proposed_starts_at')) {
+    db.exec(`ALTER TABLE appointments ADD COLUMN proposed_starts_at TEXT`);
+  }
+  if (!cols.includes('proposed_by')) {
+    db.exec(`ALTER TABLE appointments ADD COLUMN proposed_by TEXT`);
+  }
+  if (!cols.includes('reschedule_reason')) {
+    db.exec(`ALTER TABLE appointments ADD COLUMN reschedule_reason TEXT`);
+  }
+
+  // The double-booking guard must both recognize the new status AND stop
+  // being clinic-wide now that doctor_id exists. A single
+  // (clinic_id, starts_at) index would mean two *different* doctors at the
+  // same clinic still couldn't hold appointments at the same wall-clock
+  // time — exactly backwards from the point of per-doctor scoping. Split
+  // into two partial indexes: legacy doctor-less appointments keep the old
+  // clinic-wide guard (there's only one "clinic" pool of capacity for them),
+  // while doctor-assigned appointments get their own per-doctor guard.
+  // Dropping and recreating the old index is required, not optional —
+  // SQLite does not update an existing index's predicate on a second
+  // `CREATE ... IF NOT EXISTS` with different WHERE text.
+  db.exec(`DROP INDEX IF EXISTS idx_appointments_slot`);
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_slot_unassigned
+      ON appointments(clinic_id, starts_at)
+      WHERE doctor_id IS NULL
+        AND status IN ('requested', 'confirmed', 'reschedule_requested')
+  `);
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_slot_per_doctor
+      ON appointments(clinic_id, doctor_id, starts_at)
+      WHERE doctor_id IS NOT NULL
+        AND status IN ('requested', 'confirmed', 'reschedule_requested')
+  `);
 }
 
 // --- Migration: anatomical tagging for medical history ---

@@ -48,6 +48,23 @@ async function main() {
   try {
     await waitForServer(proc);
 
+    // Verify db.js's migration actually ran: query sqlite_master directly for
+    // the index definitions rather than trusting the source file, since this
+    // is exactly the kind of drift a normal test wouldn't catch.
+    const { DatabaseSync } = require('node:sqlite');
+    const probe = new DatabaseSync(DB_PATH);
+    const unassignedIdx = probe.prepare(
+      `SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_appointments_slot_unassigned'`
+    ).get();
+    const perDoctorIdx = probe.prepare(
+      `SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_appointments_slot_per_doctor'`
+    ).get();
+    probe.close();
+    assert(unassignedIdx && unassignedIdx.sql.includes('reschedule_requested'),
+      'idx_appointments_slot_unassigned covers reschedule_requested');
+    assert(perDoctorIdx && perDoctorIdx.sql.includes('reschedule_requested') && perDoctorIdx.sql.includes('doctor_id'),
+      'idx_appointments_slot_per_doctor covers reschedule_requested and is keyed by doctor_id');
+
     // Doctor registration and login.
     let res = await fetch(`${BASE}/auth/register-doctor`, {
       method: 'POST',
