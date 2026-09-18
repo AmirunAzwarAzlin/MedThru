@@ -283,6 +283,29 @@ async function main() {
     assert(res.status === 201,
       'doctor B can book the identical time slot doctor A already holds');
 
+    // A doctorId must actually belong to the clinic being booked, and must
+    // actually exist.
+    const otherClinic = clinics.find((c) => c.id !== clinic.id);
+    res = await fetch(`${BASE}/patients/token/${cardToken}/appointments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clinicId: otherClinic.id, doctorId: doctorA.id,
+        startsAt: `${aWeekOut} ${pickedSlot}`, reason: 'Wrong-clinic doctorId',
+      }),
+    });
+    assert(res.status === 400, 'booking rejects a doctorId from a different clinic');
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/appointments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clinicId: clinic.id, doctorId: 999999,
+        startsAt: `${aWeekOut} ${pickedSlot}`, reason: 'Nonexistent doctorId',
+      }),
+    });
+    assert(res.status === 400, 'booking rejects a doctorId that does not exist');
+
     console.log('\nAll smoke checks passed.');
   } finally {
     proc.kill();
