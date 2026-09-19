@@ -5,7 +5,7 @@
 'use strict';
 
 const assert = require('node:assert');
-const { rationalizeCandidates } = require('../gemini');
+const { rationalizeCandidates, orderedStartsAts } = require('../gemini');
 
 function check(condition, message) {
   assert.ok(condition, message);
@@ -74,6 +74,60 @@ async function main() {
     { genAI: malformedClient },
   );
   check(malformed === null, 'a malformed response resolves to null');
+
+  // --- orderedStartsAts: same set stays authoritative, order is only ---
+  // --- trusted from a clean permutation. ---
+  const ranked = [
+    { startsAt: '2026-09-25 09:00' },
+    { startsAt: '2026-09-25 10:00' },
+    { startsAt: '2026-09-26 09:00' },
+  ];
+  const deterministicOrder = ranked.map((r) => r.startsAt);
+
+  check(
+    JSON.stringify(orderedStartsAts(ranked, null)) === JSON.stringify(deterministicOrder),
+    'no AI response -> deterministic order',
+  );
+
+  const validReorder = [
+    { startsAt: '2026-09-26 09:00', rationale: 'x' },
+    { startsAt: '2026-09-25 09:00', rationale: 'x' },
+    { startsAt: '2026-09-25 10:00', rationale: 'x' },
+  ];
+  check(
+    JSON.stringify(orderedStartsAts(ranked, validReorder)) ===
+      JSON.stringify(validReorder.map((s) => s.startsAt)),
+    'a full, valid permutation is trusted as the new order',
+  );
+
+  const missingOneSlot = [
+    { startsAt: '2026-09-25 09:00', rationale: 'x' },
+    { startsAt: '2026-09-25 10:00', rationale: 'x' },
+  ];
+  check(
+    JSON.stringify(orderedStartsAts(ranked, missingOneSlot)) === JSON.stringify(deterministicOrder),
+    'a response missing a candidate falls back to the deterministic order',
+  );
+
+  const hallucinatedSlot = [
+    { startsAt: '2026-09-25 09:00', rationale: 'x' },
+    { startsAt: '2026-09-25 10:00', rationale: 'x' },
+    { startsAt: '2099-01-01 00:00', rationale: 'x' }, // not in `ranked`
+  ];
+  check(
+    JSON.stringify(orderedStartsAts(ranked, hallucinatedSlot)) === JSON.stringify(deterministicOrder),
+    'a response with a slot outside the candidate set falls back to the deterministic order',
+  );
+
+  const duplicatedSlot = [
+    { startsAt: '2026-09-25 09:00', rationale: 'x' },
+    { startsAt: '2026-09-25 09:00', rationale: 'x' },
+    { startsAt: '2026-09-25 10:00', rationale: 'x' },
+  ];
+  check(
+    JSON.stringify(orderedStartsAts(ranked, duplicatedSlot)) === JSON.stringify(deterministicOrder),
+    'a response with a duplicated slot falls back to the deterministic order',
+  );
 
   console.log('All gemini tests passed.');
 }

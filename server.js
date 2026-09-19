@@ -28,7 +28,7 @@ const {
   MAX_ADVANCE_DAYS,
 } = require('./appointments');
 const { urgencyTag, rankCandidates } = require('./reschedule');
-const { rationalizeCandidates } = require('./gemini');
+const { rationalizeCandidates, orderedStartsAts } = require('./gemini');
 
 const app = express();
 // Documents arrive as base64 inside JSON, so the body limit has to clear a
@@ -1882,18 +1882,27 @@ async function buildRescheduleSuggestions(appointment) {
     candidates: ranked,
   });
 
-  // Matched by slot time, not by position: nothing in the prompt or schema
-  // obliges Gemini to return the suggestions in the order it was given them,
-  // or to return one for every candidate. A positional lookup would quietly
-  // attach the wrong reason to a slot the moment it reordered or came up short.
+  // Rationale is matched by slot time, not by position, regardless of whether
+  // the reorder is trusted: nothing in the schema stops Gemini from coming up
+  // short on some slots even when it gets the full set right, and a
+  // positional lookup would quietly attach the wrong reason to a slot.
   const aiByStartsAt = new Map((aiSuggestions ?? []).map((s) => [s.startsAt, s.rationale]));
 
-  return ranked.map((r) => ({
-    startsAt: r.startsAt,
-    patientFit: r.patientFit,
-    clinicFit: r.clinicFit,
-    rationale: aiByStartsAt.get(r.startsAt) ?? templatedRationale(r),
-  }));
+  // Gemini may reorder the candidates by its own judgement, but never changes
+  // *which* slots are offered — reschedule.js's set stays authoritative;
+  // see gemini.js's orderedStartsAts for the exact-permutation check.
+  const rankedByStartsAt = new Map(ranked.map((r) => [r.startsAt, r]));
+  const order = orderedStartsAts(ranked, aiSuggestions);
+
+  return order.map((startsAt) => {
+    const r = rankedByStartsAt.get(startsAt);
+    return {
+      startsAt: r.startsAt,
+      patientFit: r.patientFit,
+      clinicFit: r.clinicFit,
+      rationale: aiByStartsAt.get(r.startsAt) ?? templatedRationale(r),
+    };
+  });
 }
 
 app.get('/api/patients/token/:token/appointments/:id/reschedule/suggestions', lookupLimiter, async (req, res) => {

@@ -1,8 +1,10 @@
-/// Thin wrapper around the Gemini API for turning an already-ranked list of
-/// reschedule candidates (see `reschedule.js`) into a short rationale per
-/// option. The ranking never comes from here — this module only captions the
-/// top picks, and degrades to `null` (never throws) on any failure, so the
-/// caller always has a templated fallback to use instead.
+/// Thin wrapper around the Gemini API for ordering and captioning a fixed set
+/// of reschedule candidates (see `reschedule.js`). Gemini may reorder the set
+/// by suitability but never changes its membership — the caller (server.js)
+/// verifies the returned slots are exactly the same set before trusting the
+/// order, and always has both a deterministic order and a templated
+/// rationale to fall back to. Degrades to `null` (never throws) on any
+/// failure.
 const { GoogleGenAI } = require('@google/genai');
 
 const MODEL = 'gemini-flash-lite-latest';
@@ -45,23 +47,30 @@ function buildPrompt({ originalStartsAt, urgencyTag, candidates }) {
   );
   return [
     `A patient's appointment originally at ${originalStartsAt} needs to move. Urgency: ${urgencyTag}.`,
-    'Candidate slots, best first, with fit scores 0-100 (higher is better):',
+    'Candidate slots, with fit scores 0-100 (higher is better), listed here in no particular order:',
     ...lines,
-    'For each candidate, in the same order, write one short (under 20 words) ' +
-      'rationale a patient would find reassuring, referencing only the day/time ' +
-      'and urgency given above. Do not invent medical details.',
+    'Decide the best order to present these in, from most to least suitable ' +
+      'for the patient — weigh the fit scores given above, but use your own ' +
+      'judgement rather than just sorting by a single number. Return every ' +
+      'one of the candidate slots exactly once, in your chosen order, each ' +
+      'with a short (under 20 words) rationale a patient would find ' +
+      'reassuring, referencing only the day/time and urgency given above. ' +
+      'Do not invent medical details, and do not add or omit any slot.',
   ].join('\n');
 }
 
-/// Returns `[{ startsAt, rationale }]`, or `null` if Gemini is unconfigured,
-/// unreachable, too slow, or responds with something that doesn't parse.
+/// Returns `[{ startsAt, rationale }]` in the order Gemini judges best, or
+/// `null` if Gemini is unconfigured, unreachable, too slow, or responds with
+/// something that doesn't parse.
 ///
-/// Neither the order nor the length is guaranteed — the model is asked for one
-/// entry per candidate but nothing enforces that, so callers must match the
-/// results back by `startsAt` rather than by position.
+/// The response is expected to be a reordering of the same candidate set, but
+/// nothing *enforces* that Gemini didn't drop, duplicate, or invent a slot —
+/// the caller must verify the returned set exactly matches the candidates
+/// before trusting the order, and match rationale back by `startsAt` rather
+/// than by position regardless.
 ///
 /// `genAI`/`timeoutMs` are injectable for testing without a real API key or a
-/// real 4-second wait.
+/// real multi-second wait.
 async function rationalizeCandidates(
   { originalStartsAt, urgencyTag, candidates },
   { genAI = defaultClient(), timeoutMs = DEFAULT_TIMEOUT_MS } = {},
@@ -99,4 +108,25 @@ async function rationalizeCandidates(
   }
 }
 
-module.exports = { rationalizeCandidates, buildPrompt };
+/// Decides the final slot order for `ranked` (the deterministic candidates
+/// from `reschedule.js`, each with a `startsAt`), given whatever
+/// `rationalizeCandidates` returned (or `null`).
+///
+/// Trusts Gemini's order only if it's an exact permutation of `ranked`'s
+/// `startsAt` values — same length, no duplicates, no hallucinated or
+/// dropped slot. Anything else, including no response at all, keeps
+/// `ranked`'s own order. Pure and synchronous: takes no dependency on
+/// Gemini being configured, so it's trivial to unit test with a hand-built
+/// `aiSuggestions` array.
+function orderedStartsAts(ranked, aiSuggestions) {
+  const rankedStartsAts = new Set(ranked.map((r) => r.startsAt));
+  const aiOrder = (aiSuggestions ?? []).map((s) => s.startsAt);
+  const isValidReorder =
+    aiOrder.length === ranked.length &&
+    new Set(aiOrder).size === aiOrder.length &&
+    aiOrder.every((startsAt) => rankedStartsAts.has(startsAt));
+
+  return isValidReorder ? aiOrder : ranked.map((r) => r.startsAt);
+}
+
+module.exports = { rationalizeCandidates, buildPrompt, orderedStartsAts };
