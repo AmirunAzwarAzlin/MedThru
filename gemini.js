@@ -5,7 +5,7 @@
 /// caller always has a templated fallback to use instead.
 const { GoogleGenAI } = require('@google/genai');
 
-const MODEL = 'gemini-2.5-flash';
+const MODEL = 'gemini-flash-lite-latest';
 const DEFAULT_TIMEOUT_MS = 4000;
 
 let cachedClient = null;
