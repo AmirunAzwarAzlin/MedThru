@@ -40,4 +40,33 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsWidgets);
     expect(find.text('Reschedule appointment'), findsOneWidget);
   });
+
+  testWidgets(
+      'A suggestion card with a long AI rationale renders without a layout error',
+      (tester) async {
+    // Regression test: ListTile.trailing throws a layout exception once the
+    // title/subtitle text is long enough to leave the trailing FilledButton
+    // no room, and real Gemini-generated rationale text routinely is this
+    // long. SuggestionCard replaced ListTile specifically to avoid this.
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SuggestionCard(
+          suggestion: const {
+            'startsAt': '2026-09-22 09:20',
+            'rationale':
+                'This slot keeps your routine appointment on the same day, just '
+                    'slightly earlier, so your care stays right on schedule.',
+          },
+          onChoose: () {},
+        ),
+      ),
+    ));
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Choose'), findsOneWidget);
+    expect(
+      find.textContaining('keeps your routine appointment'),
+      findsOneWidget,
+    );
+  });
 }

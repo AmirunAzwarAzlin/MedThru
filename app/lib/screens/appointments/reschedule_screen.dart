@@ -134,16 +134,10 @@ class _RescheduleScreenState extends State<RescheduleScreen> {
                 return Column(
                   children: [
                     for (final s in suggestions)
-                      Card(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        child: ListTile(
-                          title: Text(formatAppointmentTime(s['startsAt'] as String)),
-                          subtitle: Text(s['rationale'] as String),
-                          trailing: FilledButton(
-                            onPressed: _submitting ? null : () => _propose(s['startsAt'] as String),
-                            child: const Text('Choose'),
-                          ),
-                        ),
+                      SuggestionCard(
+                        suggestion: s,
+                        enabled: !_submitting,
+                        onChoose: () => _propose(s['startsAt'] as String),
                       ),
                   ],
                 );
@@ -200,6 +194,54 @@ class _RescheduleScreenState extends State<RescheduleScreen> {
               'The other side needs to accept this before it takes effect. '
               'Your current time is held until then.',
               style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One AI-ranked reschedule option: the slot time, Gemini's (or the
+/// templated fallback's) rationale, and a button to propose it. A `Column`
+/// rather than `ListTile` on purpose — `ListTile.trailing` assumes a small,
+/// fixed-width widget, and throws a layout exception once the title/subtitle
+/// text is long enough to leave the trailing `FilledButton` no room. Real
+/// AI-generated rationale text routinely is that long.
+class SuggestionCard extends StatelessWidget {
+  const SuggestionCard({
+    super.key,
+    required this.suggestion,
+    required this.onChoose,
+    this.enabled = true,
+  });
+
+  final Map<String, dynamic> suggestion;
+  final VoidCallback onChoose;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              formatAppointmentTime(suggestion['startsAt'] as String),
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(suggestion['rationale'] as String),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: enabled ? onChoose : null,
+                child: const Text('Choose'),
+              ),
             ),
           ],
         ),
