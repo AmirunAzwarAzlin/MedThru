@@ -6,7 +6,11 @@
 const { GoogleGenAI } = require('@google/genai');
 
 const MODEL = 'gemini-flash-lite-latest';
-const DEFAULT_TIMEOUT_MS = 4000;
+// Measured real-world latency for a 5-candidate structured request ranges
+// from ~2s to over 20s (free-tier throttling under load), so 4s made the
+// fallback fire on almost every real request. 10s trades a longer spinner
+// for actually showing the AI rationale most of the time.
+const DEFAULT_TIMEOUT_MS = 10000;
 
 let cachedClient = null;
 function defaultClient() {

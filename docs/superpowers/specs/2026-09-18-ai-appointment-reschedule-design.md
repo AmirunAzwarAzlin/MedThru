@@ -188,8 +188,10 @@ in development.
 - **Prompt contents**: exactly the redacted context above — original slot
   day/time, the coarse `urgencyTag`, and each candidate's day/time plus its
   `patientFit`/`clinicFit` score breakdown. Nothing else.
-- **Timeout**: wrapped in a hard ~4-second timeout. The suggestions endpoint is
-  a synchronous GET a user is waiting on; it cannot hang on a third-party call.
+- **Timeout**: wrapped in a hard ~10-second timeout (raised from an initial 4s
+  once real 5-candidate requests were observed taking anywhere from ~2s to
+  20s+ under free-tier load). The suggestions endpoint is a synchronous GET a
+  user is waiting on; it cannot hang indefinitely on a third-party call.
   Timeout, non-2xx, or a schema-violating response all fall back to the
   templated rationale, with no retry.
 - **No response caching** for the first pass — a repeated-refresh quota concern
