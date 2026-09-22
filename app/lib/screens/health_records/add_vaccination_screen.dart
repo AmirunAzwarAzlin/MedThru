@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../api.dart';
+import '../../contraindication_dialogs.dart';
 import '../../widgets.dart';
 
 /// Log a vaccination. Open to patients (card possession is the credential).
@@ -59,6 +60,37 @@ class _AddVaccinationScreenState extends State<AddVaccinationScreen> {
     if (picked != null) setState(() => _nextDue = picked);
   }
 
+  /// Doctor-only pre-check: cross-references this vaccine against the
+  /// patient's logged allergies and active medications before it's saved.
+  /// Returns false if the doctor cancels out of a warning; true otherwise
+  /// (including when nothing was flagged at all).
+  Future<bool> _runContraindicationCheck() async {
+    final result = await MedThruApi.instance.checkContraindication(
+      widget.token,
+      treatmentType: 'vaccination',
+      treatmentName: _vaccine.text.trim(),
+    );
+    final hardStops = (result['hardStops'] as List<dynamic>).cast<Map<String, dynamic>>();
+    if (hardStops.isNotEmpty) {
+      if (!mounted) return false;
+      final reason = await showHardStopOverrideDialog(context, hardStops: hardStops);
+      if (reason == null || !mounted) return false;
+      await MedThruApi.instance.overrideContraindication(
+        widget.token,
+        ruleIds: hardStops.map((h) => h['ruleId'] as int).toList(),
+        reason: reason,
+        treatmentName: _vaccine.text.trim(),
+      );
+      return true;
+    }
+    final aiFlag = result['aiFlag'] as Map<String, dynamic>?;
+    if (aiFlag != null) {
+      if (!mounted) return false;
+      return showAiWarningDialog(context, aiFlag: aiFlag);
+    }
+    return true;
+  }
+
   Future<void> _save() async {
     if (_vaccine.text.trim().isEmpty) {
       setState(() => _error = 'Enter the vaccine name.');
@@ -69,6 +101,13 @@ class _AddVaccinationScreenState extends State<AddVaccinationScreen> {
       _error = null;
     });
     try {
+      if (!_isEdit && MedThruApi.instance.isLoggedIn) {
+        final proceed = await _runContraindicationCheck();
+        if (!proceed) {
+          if (mounted) setState(() => _saving = false);
+          return;
+        }
+      }
       final entry = _isEdit
           ? await MedThruApi.instance.updateVaccination(
               widget.token,

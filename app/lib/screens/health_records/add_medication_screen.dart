@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../api.dart';
+import '../../contraindication_dialogs.dart';
 import '../../notifications.dart';
 import '../../widgets.dart';
 
@@ -112,6 +113,38 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     }
   }
 
+  /// Doctor-only pre-check: cross-references this medication against the
+  /// patient's logged allergies and active medications before it's saved.
+  /// Returns false if the doctor cancels out of a warning; true otherwise
+  /// (including when nothing was flagged at all).
+  Future<bool> _runContraindicationCheck() async {
+    final result = await MedThruApi.instance.checkContraindication(
+      widget.token,
+      treatmentType: 'medication',
+      treatmentName: _name.text.trim(),
+      dosage: _dosage.text.trim(),
+    );
+    final hardStops = (result['hardStops'] as List<dynamic>).cast<Map<String, dynamic>>();
+    if (hardStops.isNotEmpty) {
+      if (!mounted) return false;
+      final reason = await showHardStopOverrideDialog(context, hardStops: hardStops);
+      if (reason == null || !mounted) return false;
+      await MedThruApi.instance.overrideContraindication(
+        widget.token,
+        ruleIds: hardStops.map((h) => h['ruleId'] as int).toList(),
+        reason: reason,
+        treatmentName: _name.text.trim(),
+      );
+      return true;
+    }
+    final aiFlag = result['aiFlag'] as Map<String, dynamic>?;
+    if (aiFlag != null) {
+      if (!mounted) return false;
+      return showAiWarningDialog(context, aiFlag: aiFlag);
+    }
+    return true;
+  }
+
   Future<void> _save() async {
     if (_name.text.trim().isEmpty) {
       setState(() => _error = 'Enter the medication name.');
@@ -122,6 +155,13 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
       _error = null;
     });
     try {
+      if (!_isEdit && MedThruApi.instance.isLoggedIn) {
+        final proceed = await _runContraindicationCheck();
+        if (!proceed) {
+          if (mounted) setState(() => _saving = false);
+          return;
+        }
+      }
       final entry = _isEdit
           ? await MedThruApi.instance.updateMedication(
               widget.token,
