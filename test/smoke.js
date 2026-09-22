@@ -589,6 +589,70 @@ async function main() {
     assert(auditEntries.some((a) => a.action === 'contraindication_flagged'),
       'the flagged check itself is also written to the audit log');
 
+    // --- Contraindication engine: admin-only rule CRUD ---
+    res = await fetch(`${BASE}/contraindication-rules`, { headers: { Authorization: `Bearer ${token}` } });
+    assert(res.status === 200, 'any doctor can list contraindication rules');
+    const seededRules = await res.json();
+    assert(seededRules.length >= 15, 'the starter rule set is seeded on first boot');
+
+    res = await fetch(`${BASE}/contraindication-rules`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        ruleType: 'medication',
+        triggerTerms: 'test-trigger',
+        treatmentTerms: 'test-treatment',
+        severity: 'moderate',
+        reason: 'CI test rule.',
+      }),
+    });
+    assert(res.status === 403, 'a non-admin doctor cannot create a contraindication rule');
+
+    // Promote CI Doctor to admin directly — no API surface for this, same
+    // direct-DB approach already used earlier in this file for the doctor
+    // per-clinic index test.
+    {
+      const { DatabaseSync } = require('node:sqlite');
+      const promoteDb = new DatabaseSync(DB_PATH);
+      promoteDb.prepare(`UPDATE doctors SET is_admin = 1 WHERE email = ?`).run('ci@medthru.test');
+      promoteDb.close();
+    }
+
+    res = await fetch(`${BASE}/contraindication-rules`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        ruleType: 'medication',
+        triggerTerms: 'test-trigger',
+        treatmentTerms: 'test-treatment',
+        severity: 'moderate',
+        reason: 'CI test rule.',
+      }),
+    });
+    assert(res.status === 201, 'an admin doctor can create a contraindication rule');
+    const newRule = await res.json();
+
+    res = await fetch(`${BASE}/contraindication-rules/${newRule.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        ruleType: 'medication',
+        triggerTerms: 'test-trigger',
+        treatmentTerms: 'test-treatment-edited',
+        severity: 'high',
+        reason: 'CI test rule, edited.',
+      }),
+    });
+    assert(res.status === 200, 'an admin doctor can edit a contraindication rule');
+    const editedRule = await res.json();
+    assert(editedRule.treatment_terms === 'test-treatment-edited', 'the edit is reflected in the response');
+
+    res = await fetch(`${BASE}/contraindication-rules/${newRule.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assert(res.status === 200, 'an admin doctor can delete a contraindication rule');
+
     console.log('\nAll smoke checks passed.');
   } finally {
     proc.kill();

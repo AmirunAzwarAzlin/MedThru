@@ -1039,6 +1039,69 @@ app.post('/api/patients/token/:token/contraindication-override', lookupLimiter, 
   res.status(201).json({ logged: true });
 });
 
+app.get('/api/contraindication-rules', requireDoctor, (_req, res) => {
+  res.json(db.prepare(`SELECT * FROM contraindication_rules ORDER BY rule_type, id`).all());
+});
+
+function contraindicationRuleError({ ruleType, triggerTerms, treatmentTerms, reason }) {
+  if (!['allergy', 'medication'].includes(ruleType)) {
+    return `ruleType must be 'allergy' or 'medication'`;
+  }
+  if (typeof triggerTerms !== 'string' || !triggerTerms.trim()) {
+    return 'triggerTerms is required';
+  }
+  if (typeof treatmentTerms !== 'string' || !treatmentTerms.trim()) {
+    return 'treatmentTerms is required';
+  }
+  if (typeof reason !== 'string' || !reason.trim()) {
+    return 'reason is required';
+  }
+  return null;
+}
+
+app.post('/api/contraindication-rules', requireDoctor, requireAdmin, (req, res) => {
+  const problem = contraindicationRuleError(req.body);
+  if (problem) return res.status(400).json({ error: problem });
+
+  const { ruleType, triggerTerms, treatmentTerms, severity, reason } = req.body;
+  const result = db.prepare(
+    `INSERT INTO contraindication_rules (rule_type, trigger_terms, treatment_terms, severity, reason, created_by)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(ruleType, triggerTerms.trim(), treatmentTerms.trim(), severity || 'high', reason.trim(), req.doctor.id);
+
+  res.status(201).json(
+    db.prepare(`SELECT * FROM contraindication_rules WHERE id = ?`).get(Number(result.lastInsertRowid))
+  );
+});
+
+app.put('/api/contraindication-rules/:id', requireDoctor, requireAdmin, (req, res) => {
+  const existing = db.prepare(`SELECT * FROM contraindication_rules WHERE id = ?`).get(req.params.id);
+  if (!existing) {
+    return res.status(404).json({ error: 'Rule not found' });
+  }
+
+  const problem = contraindicationRuleError(req.body);
+  if (problem) return res.status(400).json({ error: problem });
+
+  const { ruleType, triggerTerms, treatmentTerms, severity, reason } = req.body;
+  db.prepare(
+    `UPDATE contraindication_rules
+     SET rule_type = ?, trigger_terms = ?, treatment_terms = ?, severity = ?, reason = ?, updated_at = datetime('now')
+     WHERE id = ?`
+  ).run(ruleType, triggerTerms.trim(), treatmentTerms.trim(), severity || 'high', reason.trim(), existing.id);
+
+  res.json(db.prepare(`SELECT * FROM contraindication_rules WHERE id = ?`).get(existing.id));
+});
+
+app.delete('/api/contraindication-rules/:id', requireDoctor, requireAdmin, (req, res) => {
+  const existing = db.prepare(`SELECT * FROM contraindication_rules WHERE id = ?`).get(req.params.id);
+  if (!existing) {
+    return res.status(404).json({ error: 'Rule not found' });
+  }
+  db.prepare(`DELETE FROM contraindication_rules WHERE id = ?`).run(existing.id);
+  res.json({ deleted: true });
+});
+
 // --- Documents ---
 //
 // Files don't fit the registerHealthRecords shape (bytes on disk, a binary
