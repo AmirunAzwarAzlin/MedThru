@@ -10,6 +10,7 @@
 const db = require('./db');
 const { hashPassword } = require('./auth');
 const { generateCardToken, hashCardToken, previewOf } = require('./tokens');
+const { generateVitalReadings } = require('./vitals-ranges');
 
 const DEMO_PASSWORD = 'Cu5667wja';
 
@@ -199,7 +200,7 @@ const insertAudit = db.prepare(`
   INSERT INTO audit_log (patient_id, doctor_id, action, details) VALUES (?, ?, 'create', 'Seeded demo record')
 `);
 
-function seedPatientExtras(patientId, doctorId) {
+function seedPatientExtras(patientId, doctorId, dob, gender) {
   if (maybe(0.55)) {
     const a = rand(ALLERGENS);
     insertAllergy.run(patientId, a.allergen, a.reaction, a.severity, doctorId);
@@ -224,10 +225,21 @@ function seedPatientExtras(patientId, doctorId) {
       isoDate(new Date(Date.now() - randInt(1, 200) * 86400000)), doctorId,
     );
   }
+  // Every patient gets a full set of vitals + anthropometry, not just some —
+  // these are the fields the emergency card view and doctor dashboard expect
+  // to always be present.
+  const taken = isoDate(new Date(Date.now() - randInt(1, 60) * 86400000));
+  for (const reading of generateVitalReadings(dob, gender)) {
+    insertReading.run(patientId, doctorId, reading.type, reading.value, reading.unit, taken);
+  }
+  if (maybe(0.5)) {
+    insertReading.run(patientId, doctorId, 'blood_sugar', (randInt(39, 78) / 10).toFixed(1), 'mmol/L', taken);
+  }
   if (maybe(0.4)) {
-    const taken = isoDate(new Date(Date.now() - randInt(1, 60) * 86400000));
-    insertReading.run(patientId, doctorId, 'bp_systolic', randInt(105, 150), 'mmHg', taken);
-    insertReading.run(patientId, doctorId, 'bp_diastolic', randInt(65, 95), 'mmHg', taken);
+    insertReading.run(patientId, doctorId, 'cholesterol', (randInt(35, 65) / 10).toFixed(1), 'mmol/L', taken);
+  }
+  if (maybe(0.3)) {
+    insertReading.run(patientId, doctorId, 'uric_acid', randInt(150, 450), 'umol/L', taken);
   }
   if (maybe(0.3)) {
     insertEmergencyContact.run(patientId, `${rand(MALAY_MALE_FIRST)} ${rand(MALAY_LAST)}`, `01${randInt(0, 9)}-${randInt(1000000, 9999999)}`, rand(RELATIONSHIPS), doctorId);
@@ -255,13 +267,14 @@ const NAME_GENERATORS = [malayName, malayName, malayName, chineseName, chineseNa
 for (let i = 0; i < 49; i++) {
   const { name, gender } = rand(NAME_GENERATORS)();
   const age = randInt(4, 82);
+  const dob = dobForAge(age);
   const doctorName = doctors[randInt(0, doctors.length - 1)].name;
   const phone = uniquePhone();
   if (findPatientByPhone.get(phone)) continue;
 
   const result = insertPatient.run(
     name,
-    dobForAge(age),
+    dob,
     rand(BLOOD_TYPES),
     gender,
     phone,
@@ -270,7 +283,7 @@ for (let i = 0; i < 49; i++) {
     doctorName,
   );
   const patientId = Number(result.lastInsertRowid);
-  seedPatientExtras(patientId, rand(doctorIds));
+  seedPatientExtras(patientId, rand(doctorIds), dob, gender);
   created += 1;
 }
 
@@ -279,9 +292,10 @@ for (let i = 0; i < 49; i++) {
 const REQUIRED_PHONE = '01157785382';
 let amirun = findPatientByPhone.get(REQUIRED_PHONE);
 if (!amirun) {
+  const amirunDob = dobForAge(27);
   const result = insertPatient.run(
     'Amirun Azwar bin Azlin',
-    dobForAge(27),
+    amirunDob,
     'O+',
     'male',
     REQUIRED_PHONE,
@@ -290,7 +304,7 @@ if (!amirun) {
     'Dr. Ahmad Faiz bin Ismail',
   );
   amirun = { id: Number(result.lastInsertRowid) };
-  seedPatientExtras(amirun.id, doctorIds[0]);
+  seedPatientExtras(amirun.id, doctorIds[0], amirunDob, 'male');
   console.log(`Created patient "Amirun Azwar bin Azlin" (id ${amirun.id}) — phone ${REQUIRED_PHONE}.`);
 } else {
   // Existing row (e.g. re-run): make sure the phone-login password is set.
