@@ -5,6 +5,7 @@ import '../../theme.dart';
 import '../../widgets.dart';
 import 'patient_directory_screen.dart';
 import 'patient_summary_screen.dart';
+import 'appointment_queue_screen.dart';
 
 /// The doctor's landing dashboard — a practice-at-a-glance view: today's
 /// schedule, headline KPIs, patient demographics, this month's appointment
@@ -940,6 +941,7 @@ class _AppointmentsCard extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final completed = (month['completed'] as num?)?.toInt() ?? 0;
     final cancelled = (month['cancelled'] as num?)?.toInt() ?? 0;
+    final pending = (month['pending'] as num?)?.toInt() ?? 0;
     final series = ((month['series'] as List?) ?? const [])
         .cast<Map<String, dynamic>>();
 
@@ -978,6 +980,42 @@ class _AppointmentsCard extends StatelessWidget {
               ),
             ],
           ),
+          if (pending > 0) ...[
+            const SizedBox(height: 14),
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AppointmentQueueScreen()),
+              ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: MedThruTheme.amber.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.hourglass_top_rounded,
+                        size: 16, color: MedThruTheme.amber),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '$pending appointment request${pending == 1 ? '' : 's'} awaiting your decision',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: scheme.onSurface,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.chevron_right_rounded,
+                        size: 18, color: scheme.onSurfaceVariant),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

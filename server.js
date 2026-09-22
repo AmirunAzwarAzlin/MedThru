@@ -1490,6 +1490,12 @@ app.get('/api/doctor/dashboard', requireDoctor, (req, res) => {
   const monthCompleted = monthRows.reduce((s, r) => s + Number(r.completed), 0);
   const monthCancelled = monthRows.reduce((s, r) => s + Number(r.cancelled), 0);
 
+  // Requests still waiting on a doctor decision, regardless of month —
+  // surfaced as a nudge alongside the month's tallies.
+  const pendingRequests = db.prepare(
+    `SELECT COUNT(*) AS n FROM appointments WHERE status IN ('requested', 'reschedule_requested')`
+  ).get().n;
+
   // New patients: most recent registrations, tagged with the reason for their
   // latest booking (if any) as a one-line "why".
   const newPatients = db.prepare(
@@ -1522,6 +1528,7 @@ app.get('/api/doctor/dashboard', requireDoctor, (req, res) => {
     appointmentsThisMonth: {
       completed: monthCompleted,
       cancelled: monthCancelled,
+      pending: pendingRequests,
       series: monthRows.map((r) => ({
         day: r.day,
         completed: Number(r.completed),
