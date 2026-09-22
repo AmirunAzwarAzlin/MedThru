@@ -633,6 +633,123 @@ class MedThruApi extends ChangeNotifier {
   Future<void> deleteVaccination(String token, int id) =>
       _deleteByToken('vaccinations', token, id);
 
+  // --- Contraindication engine ---
+  //
+  // Doctor-only: checks a proposed medication/vaccination against the
+  // patient's logged allergies and active medications before it's saved,
+  // and the admin-only CRUD for the hard-stop rule table behind it.
+
+  Future<Map<String, dynamic>> checkContraindication(
+    String token, {
+    required String treatmentType,
+    required String treatmentName,
+    String? dosage,
+  }) async {
+    final res = await http.post(
+      Uri.parse('$_baseUrl/patients/token/$token/contraindication-check'),
+      headers: _headers,
+      body: jsonEncode({
+        'treatmentType': treatmentType,
+        'treatmentName': treatmentName,
+        if (dosage != null && dosage.isNotEmpty) 'dosage': dosage,
+      }),
+    );
+    if (res.statusCode != 200) {
+      throw _errorFrom(res, 'Could not check for contraindications');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<void> overrideContraindication(
+    String token, {
+    required List<int> ruleIds,
+    required String reason,
+    required String treatmentName,
+  }) async {
+    final res = await http.post(
+      Uri.parse('$_baseUrl/patients/token/$token/contraindication-override'),
+      headers: _headers,
+      body: jsonEncode({
+        'ruleIds': ruleIds,
+        'reason': reason,
+        'treatmentName': treatmentName,
+      }),
+    );
+    if (res.statusCode != 201) {
+      throw _errorFrom(res, 'Could not record the override');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getContraindicationRules() async {
+    final res = await http.get(
+      Uri.parse('$_baseUrl/contraindication-rules'),
+      headers: _headers,
+    );
+    if (res.statusCode != 200) {
+      throw _errorFrom(res, 'Could not load contraindication rules');
+    }
+    return (jsonDecode(res.body) as List<dynamic>).cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> createContraindicationRule({
+    required String ruleType,
+    required String triggerTerms,
+    required String treatmentTerms,
+    required String severity,
+    required String reason,
+  }) async {
+    final res = await http.post(
+      Uri.parse('$_baseUrl/contraindication-rules'),
+      headers: _headers,
+      body: jsonEncode({
+        'ruleType': ruleType,
+        'triggerTerms': triggerTerms,
+        'treatmentTerms': treatmentTerms,
+        'severity': severity,
+        'reason': reason,
+      }),
+    );
+    if (res.statusCode != 201) {
+      throw _errorFrom(res, 'Could not create the rule');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateContraindicationRule(
+    int id, {
+    required String ruleType,
+    required String triggerTerms,
+    required String treatmentTerms,
+    required String severity,
+    required String reason,
+  }) async {
+    final res = await http.put(
+      Uri.parse('$_baseUrl/contraindication-rules/$id'),
+      headers: _headers,
+      body: jsonEncode({
+        'ruleType': ruleType,
+        'triggerTerms': triggerTerms,
+        'treatmentTerms': treatmentTerms,
+        'severity': severity,
+        'reason': reason,
+      }),
+    );
+    if (res.statusCode != 200) {
+      throw _errorFrom(res, 'Could not update the rule');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<void> deleteContraindicationRule(int id) async {
+    final res = await http.delete(
+      Uri.parse('$_baseUrl/contraindication-rules/$id'),
+      headers: _headers,
+    );
+    if (res.statusCode != 200) {
+      throw _errorFrom(res, 'Could not delete the rule');
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getMedicalHistory(String token) =>
       _listByToken('medical-history', token);
 
