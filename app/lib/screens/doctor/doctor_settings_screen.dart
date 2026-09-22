@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../api.dart';
 import '../../widgets.dart';
+import 'contraindication_rules_screen.dart';
 
 /// Doctor account settings: edit profile fields and change password.
 class DoctorSettingsScreen extends StatefulWidget {
@@ -255,6 +256,24 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   : const Icon(Icons.password_outlined),
               label: Text(_savingPassword ? 'Changing…' : 'Change password'),
             ),
+            if (_api.isAdmin) ...[
+              const SizedBox(height: 32),
+              Divider(color: scheme.outlineVariant),
+              const SizedBox(height: 20),
+              Text('Administration',
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onSurface)),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ContraindicationRulesScreen()),
+                ),
+                icon: const Icon(Icons.rule_outlined),
+                label: const Text('Contraindication rules'),
+              ),
+            ],
           ],
         ),
       ),
