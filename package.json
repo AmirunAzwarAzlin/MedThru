@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node test/reschedule-scoring.js && node test/gemini.js && node test/smoke.js",
+    "test": "node test/reschedule-scoring.js && node test/gemini.js && node test/contraindication.js && node test/contraindication-gemini.js && node test/smoke.js",
     "reader": "node reader.js",
     "write-card": "node write-card.js",
     "start": "node server.js",
