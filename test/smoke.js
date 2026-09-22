@@ -564,6 +564,26 @@ async function main() {
     assert(clearCheck.hardStops.length === 0, 'paracetamol is not flagged for this patient');
     assert(clearCheck.aiFlag === null, 'no GEMINI_API_KEY is configured in CI, so the AI layer stays null rather than erroring');
 
+    // An expired medication (end_date in the past) must not count as "active"
+    // for the hard-stop rule table — otherwise a long-discontinued drug could
+    // wrongly block (or fail to block) a new prescription forever.
+    res = await fetch(`${BASE}/patients/token/${cardToken}/medications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: 'Warfarin', dosage: '5mg', endDate: '2020-01-01' }),
+    });
+    assert(res.status === 201, 'add an expired medication for the CI Patient');
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/contraindication-check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ treatmentType: 'medication', treatmentName: 'Ibuprofen' }),
+    });
+    assert(res.status === 200, 'contraindication check succeeds for the warfarin/NSAID probe');
+    const expiredMedCheck = await res.json();
+    assert(expiredMedCheck.hardStops.length === 0,
+      'an expired warfarin prescription does not trigger the warfarin/NSAID hard stop');
+
     res = await fetch(`${BASE}/patients/token/${cardToken}/contraindication-check`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -582,7 +602,7 @@ async function main() {
     });
     assert(res.status === 201, 'a doctor can log an override for a hard-stopped treatment');
 
-    res = await fetch(`${BASE}/patients/${patient.id}/audit`);
+    res = await fetch(`${BASE}/patients/${patient.id}/audit`, { headers: { Authorization: `Bearer ${token}` } });
     const auditEntries = await res.json();
     assert(auditEntries.some((a) => a.action === 'contraindication_override'),
       'the override is written to the audit log');

@@ -578,6 +578,42 @@ db.exec(`
       ['medication', 'digoxin',
         'clarithromycin,erythromycin,amiodarone', 'high',
         'These drugs raise digoxin levels, risking digoxin toxicity.'],
+
+      // --- Mirrored rows: the same interactions in the reverse prescribing
+      // order (patient already on the drug listed as "treatment" above,
+      // now being prescribed the one listed as "trigger" above). These are
+      // clinically symmetric interactions, so a doctor should be warned
+      // regardless of which drug was already on file.
+      ['medication', 'ibuprofen,naproxen,aspirin,diclofenac',
+        'warfarin,coumadin', 'high',
+        'Combining warfarin with NSAIDs significantly increases bleeding risk.'],
+      ['medication', 'ciprofloxacin,metronidazole,fluconazole',
+        'warfarin,coumadin', 'high',
+        'These antibiotics/antifungals inhibit warfarin metabolism, increasing INR and bleeding risk.'],
+      ['medication', 'amiodarone',
+        'warfarin,coumadin', 'high',
+        'Amiodarone inhibits warfarin metabolism, sharply increasing INR and bleeding risk.'],
+      ['medication', 'sertraline,fluoxetine,paroxetine,pseudoephedrine,phenylephrine',
+        'phenelzine,tranylcypromine,isocarboxazid', 'high',
+        'Combining an MAOI with an SSRI or decongestant risks serotonin syndrome or a hypertensive crisis.'],
+      ['medication', 'clarithromycin,erythromycin,itraconazole',
+        'simvastatin,atorvastatin,lovastatin', 'high',
+        'These interactions raise statin blood levels and significantly increase the risk of rhabdomyolysis.'],
+      ['medication', 'ibuprofen,naproxen,aspirin',
+        'methotrexate', 'moderate',
+        'NSAIDs reduce methotrexate clearance, increasing the risk of methotrexate toxicity.'],
+      ['medication', 'ibuprofen,naproxen,diclofenac',
+        'lithium', 'moderate',
+        'NSAIDs reduce renal clearance of lithium, risking lithium toxicity.'],
+      ['medication', 'spironolactone,potassium chloride,potassium supplement',
+        'lisinopril,enalapril,ramipril', 'moderate',
+        'Combining an ACE inhibitor with a potassium-sparing agent risks dangerous hyperkalemia.'],
+      ['medication', 'omeprazole,esomeprazole',
+        'clopidogrel,plavix', 'moderate',
+        'Omeprazole/esomeprazole can inhibit clopidogrel activation, reducing its antiplatelet effect.'],
+      ['medication', 'clarithromycin,erythromycin,amiodarone',
+        'digoxin', 'high',
+        'These drugs raise digoxin levels, risking digoxin toxicity.'],
     ];
     for (const row of seed) insert.run(...row);
     console.log(`Seeded ${seed.length} contraindication rules.`);

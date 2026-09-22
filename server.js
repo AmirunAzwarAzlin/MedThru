@@ -549,7 +549,7 @@ app.put('/api/patients/token/:token', requireDoctor, (req, res) => {
   res.json(withCard(updated));
 });
 
-app.get('/api/patients/:id/audit', (req, res) => {
+app.get('/api/patients/:id/audit', requireDoctor, (req, res) => {
   const entries = db.prepare(
     `SELECT audit_log.*, doctors.name AS doctor_name
      FROM audit_log LEFT JOIN doctors ON doctors.id = audit_log.doctor_id
