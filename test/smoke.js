@@ -542,6 +542,53 @@ async function main() {
     assert(Array.isArray(fallbackSuggestions) && fallbackSuggestions.length > 0,
       'clinic-wide fallback suggestions are non-empty');
 
+    // --- Contraindication engine: check + override ---
+    res = await fetch(`${BASE}/patients/token/${cardToken}/contraindication-check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ treatmentType: 'medication', treatmentName: 'Amoxicillin' }),
+    });
+    assert(res.status === 200, 'contraindication check succeeds');
+    const amoxCheck = await res.json();
+    assert(amoxCheck.hardStops.length > 0, 'amoxicillin is flagged for a patient with a logged penicillin allergy');
+    assert(amoxCheck.hardStops[0].reason.length > 0, 'the hard stop carries a human-readable reason');
+    assert(amoxCheck.aiFlag === null, 'the AI layer is skipped once a hard stop already fired');
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/contraindication-check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ treatmentType: 'medication', treatmentName: 'Paracetamol' }),
+    });
+    assert(res.status === 200, 'contraindication check succeeds for an unrelated medication');
+    const clearCheck = await res.json();
+    assert(clearCheck.hardStops.length === 0, 'paracetamol is not flagged for this patient');
+    assert(clearCheck.aiFlag === null, 'no GEMINI_API_KEY is configured in CI, so the AI layer stays null rather than erroring');
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/contraindication-check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ treatmentType: 'medication', treatmentName: 'Amoxicillin' }),
+    });
+    assert(res.status === 401, 'the contraindication check requires a doctor bearer token');
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/contraindication-override`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        ruleIds: amoxCheck.hardStops.map((h) => h.ruleId),
+        reason: 'Desensitization protocol already in place; proceeding under supervision.',
+        treatmentName: 'Amoxicillin',
+      }),
+    });
+    assert(res.status === 201, 'a doctor can log an override for a hard-stopped treatment');
+
+    res = await fetch(`${BASE}/patients/${patient.id}/audit`);
+    const auditEntries = await res.json();
+    assert(auditEntries.some((a) => a.action === 'contraindication_override'),
+      'the override is written to the audit log');
+    assert(auditEntries.some((a) => a.action === 'contraindication_flagged'),
+      'the flagged check itself is also written to the audit log');
+
     console.log('\nAll smoke checks passed.');
   } finally {
     proc.kill();

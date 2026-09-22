@@ -29,6 +29,8 @@ const {
 } = require('./appointments');
 const { urgencyTag, rankCandidates } = require('./reschedule');
 const { rationalizeCandidates, orderedStartsAts } = require('./gemini');
+const { checkHardStops } = require('./contraindication');
+const { judgeContraindication } = require('./contraindication-gemini');
 
 const app = express();
 // Documents arrive as base64 inside JSON, so the body limit has to clear a
@@ -940,6 +942,101 @@ registerHealthRecords({
     { body: 'note', db: 'note' },
   ],
   orderBy: 'taken_at DESC, created_at DESC',
+});
+
+// --- Contraindication engine ---
+//
+// Cross-references a proposed medication or vaccination against the
+// patient's logged allergies and active medications before it's saved. A
+// deterministic hard-stop rule table (contraindication_rules) always runs
+// first and can never be silently overridden; Gemini only judges the softer
+// cases left over once the hard-stop table finds nothing (see
+// contraindication.js / contraindication-gemini.js). Doctor-only: this is
+// about a doctor proposing a *new* treatment, not a patient's own
+// self-reported entries.
+
+const TREATMENT_TYPES = ['medication', 'vaccination'];
+
+function activeMedicationNames(patientId) {
+  return db.prepare(
+    `SELECT name FROM medications
+     WHERE patient_id = ? AND (end_date IS NULL OR end_date >= date('now'))`
+  ).all(patientId);
+}
+
+function activeMedicationsDetailed(patientId) {
+  return db.prepare(
+    `SELECT name, dosage, frequency FROM medications
+     WHERE patient_id = ? AND (end_date IS NULL OR end_date >= date('now'))`
+  ).all(patientId);
+}
+
+app.post('/api/patients/token/:token/contraindication-check', lookupLimiter, requireDoctor, async (req, res) => {
+  const patient = resolvePatientFromReq(req);
+  if (!patient) {
+    return res.status(404).json({ error: 'No patient found for this card' });
+  }
+
+  const { treatmentType, treatmentName, dosage } = req.body;
+  if (!TREATMENT_TYPES.includes(treatmentType)) {
+    return res.status(400).json({ error: `treatmentType must be one of: ${TREATMENT_TYPES.join(', ')}` });
+  }
+  if (typeof treatmentName !== 'string' || !treatmentName.trim()) {
+    return res.status(400).json({ error: 'treatmentName is required' });
+  }
+
+  const allergenRows = db.prepare(`SELECT allergen FROM allergies WHERE patient_id = ?`).all(patient.id);
+  const rules = db.prepare(`SELECT * FROM contraindication_rules`).all();
+
+  const hardStops = checkHardStops({
+    rules,
+    allergies: allergenRows,
+    medications: activeMedicationNames(patient.id),
+    proposedName: treatmentName,
+  });
+
+  let aiFlag = null;
+  if (hardStops.length === 0) {
+    aiFlag = await judgeContraindication({
+      allergies: db.prepare(`SELECT allergen, reaction, severity FROM allergies WHERE patient_id = ?`).all(patient.id),
+      medications: activeMedicationsDetailed(patient.id),
+      proposedTreatment: { name: treatmentName, type: treatmentType, dosage: dosage || null },
+    });
+  }
+
+  if (hardStops.length > 0 || aiFlag) {
+    logAudit(patient.id, req.doctor.id, 'contraindication_flagged', JSON.stringify({
+      treatmentType,
+      treatmentName,
+      hardStopRuleIds: hardStops.map((h) => h.ruleId),
+      aiFlag,
+    }));
+  }
+
+  res.json({ hardStops, aiFlag });
+});
+
+app.post('/api/patients/token/:token/contraindication-override', lookupLimiter, requireDoctor, (req, res) => {
+  const patient = resolvePatientFromReq(req);
+  if (!patient) {
+    return res.status(404).json({ error: 'No patient found for this card' });
+  }
+
+  const { ruleIds, reason, treatmentName } = req.body;
+  if (typeof reason !== 'string' || !reason.trim()) {
+    return res.status(400).json({ error: 'reason is required' });
+  }
+  if (typeof treatmentName !== 'string' || !treatmentName.trim()) {
+    return res.status(400).json({ error: 'treatmentName is required' });
+  }
+
+  logAudit(patient.id, req.doctor.id, 'contraindication_override', JSON.stringify({
+    treatmentName,
+    ruleIds: Array.isArray(ruleIds) ? ruleIds : [],
+    reason: reason.trim(),
+  }));
+
+  res.status(201).json({ logged: true });
 });
 
 // --- Documents ---
