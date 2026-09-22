@@ -30,6 +30,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
   late DateTime? _startDate = DateTime.tryParse(widget.existing?['start_date'] as String? ?? '');
   late DateTime? _endDate = DateTime.tryParse(widget.existing?['end_date'] as String? ?? '');
   bool _saving = false;
+  bool _checkingInteractions = false;
   String? _error;
 
   bool _reminderOn = false;
@@ -156,7 +157,13 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     });
     try {
       if (!_isEdit && MedThruApi.instance.isLoggedIn) {
-        final proceed = await _runContraindicationCheck();
+        if (mounted) setState(() => _checkingInteractions = true);
+        bool proceed;
+        try {
+          proceed = await _runContraindicationCheck();
+        } finally {
+          if (mounted) setState(() => _checkingInteractions = false);
+        }
         if (!proceed) {
           if (mounted) setState(() => _saving = false);
           return;
@@ -293,7 +300,11 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : Icon(_isEdit ? Icons.save_outlined : Icons.add),
-              label: Text(_saving ? 'Saving…' : 'Save'),
+              label: Text(
+                _checkingInteractions
+                    ? 'Checking interactions…'
+                    : (_saving ? 'Saving…' : 'Save'),
+              ),
             ),
           ],
         ),

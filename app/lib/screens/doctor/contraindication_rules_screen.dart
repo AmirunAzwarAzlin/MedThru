@@ -80,10 +80,22 @@ class _ContraindicationRulesScreenState extends State<ContraindicationRulesScree
         child: FutureBuilder<List<Map<String, dynamic>>>(
           future: _rules,
           builder: (context, snap) {
-            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-            final rules = snap.data!;
+            if (snap.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snap.hasError) {
+              return CenteredMessage(
+                icon: Icons.error_outline,
+                title: 'Could not load rules',
+                subtitle: snap.error.toString().replaceFirst('Exception: ', ''),
+              );
+            }
+            final rules = snap.data ?? [];
             if (rules.isEmpty) {
-              return const Center(child: Text('No rules yet.'));
+              return const CenteredMessage(
+                icon: Icons.rule_outlined,
+                title: 'No rules yet',
+              );
             }
             return ListView.separated(
               padding: const EdgeInsets.all(20),

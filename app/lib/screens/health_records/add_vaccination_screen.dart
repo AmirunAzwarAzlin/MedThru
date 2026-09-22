@@ -25,6 +25,7 @@ class _AddVaccinationScreenState extends State<AddVaccinationScreen> {
   late DateTime? _nextDue =
       DateTime.tryParse(widget.existing?['next_due'] as String? ?? '');
   bool _saving = false;
+  bool _checkingInteractions = false;
   String? _error;
 
   bool get _isEdit => widget.existing != null;
@@ -102,7 +103,13 @@ class _AddVaccinationScreenState extends State<AddVaccinationScreen> {
     });
     try {
       if (!_isEdit && MedThruApi.instance.isLoggedIn) {
-        final proceed = await _runContraindicationCheck();
+        if (mounted) setState(() => _checkingInteractions = true);
+        bool proceed;
+        try {
+          proceed = await _runContraindicationCheck();
+        } finally {
+          if (mounted) setState(() => _checkingInteractions = false);
+        }
         if (!proceed) {
           if (mounted) setState(() => _saving = false);
           return;
@@ -200,7 +207,11 @@ class _AddVaccinationScreenState extends State<AddVaccinationScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : Icon(_isEdit ? Icons.save_outlined : Icons.add),
-              label: Text(_saving ? 'Saving…' : 'Save'),
+              label: Text(
+                _checkingInteractions
+                    ? 'Checking interactions…'
+                    : (_saving ? 'Saving…' : 'Save'),
+              ),
             ),
           ],
         ),
