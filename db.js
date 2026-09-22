@@ -500,4 +500,88 @@ if (patientColumns().includes('token')) {
   console.log(`Migrated ${rows.length} plaintext card token(s) to hashed cards.`);
 }
 
+// --- Contraindication engine: hard-stop rule table ---
+//
+// A small curated set of well-known, high-severity allergy/medication
+// conflicts, checked deterministically before a doctor saves a new
+// medication or vaccination (see contraindication.js and server.js's
+// "Contraindication engine" section). Gemini judgment is layered on top of
+// this table in server.js, never a replacement for it.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS contraindication_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_type TEXT NOT NULL,            -- 'allergy' | 'medication'
+    trigger_terms TEXT NOT NULL,        -- comma-separated keywords matched
+                                         -- against an existing allergen or
+                                         -- active medication name
+    treatment_terms TEXT NOT NULL,      -- comma-separated keywords matched
+                                         -- against the proposed treatment name
+    severity TEXT NOT NULL DEFAULT 'high',
+    reason TEXT NOT NULL,
+    created_by INTEGER REFERENCES doctors(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+// --- Seed: a starter set of well-known hard-stop rules ---
+{
+  const { n } = db.prepare(`SELECT COUNT(*) AS n FROM contraindication_rules`).get();
+  if (n === 0) {
+    const insert = db.prepare(
+      `INSERT INTO contraindication_rules (rule_type, trigger_terms, treatment_terms, severity, reason)
+       VALUES (?, ?, ?, ?, ?)`
+    );
+    const seed = [
+      ['allergy', 'penicillin,amoxicillin,ampicillin,augmentin',
+        'penicillin,amoxicillin,ampicillin,augmentin,piperacillin', 'high',
+        'Penicillin-class allergy cross-reacts with all penicillin-class antibiotics and can cause a severe or anaphylactic reaction.'],
+      ['allergy', 'sulfa,sulfonamide,bactrim,sulfamethoxazole',
+        'sulfamethoxazole,bactrim,co-trimoxazole,sulfasalazine', 'high',
+        'Sulfa allergy cross-reacts with sulfonamide antibiotics and can trigger a severe skin or systemic reaction.'],
+      ['allergy', 'aspirin,nsaid,ibuprofen,naproxen',
+        'ibuprofen,naproxen,aspirin,diclofenac,ketorolac', 'high',
+        'NSAID/aspirin allergy cross-reacts across the NSAID class and can trigger bronchospasm or anaphylaxis.'],
+      ['allergy', 'egg,eggs',
+        'influenza vaccine,flu vaccine,yellow fever vaccine', 'moderate',
+        'Some influenza and yellow fever vaccines are egg-based and can trigger a reaction in an egg-allergic patient.'],
+      ['allergy', 'gelatin',
+        'mmr,measles mumps rubella,varicella,chickenpox vaccine', 'moderate',
+        'MMR and varicella vaccines contain gelatin as a stabilizer, which can trigger a reaction in a gelatin-allergic patient.'],
+      ['medication', 'warfarin,coumadin',
+        'ibuprofen,naproxen,aspirin,diclofenac', 'high',
+        'Combining warfarin with NSAIDs significantly increases bleeding risk.'],
+      ['medication', 'warfarin,coumadin',
+        'ciprofloxacin,metronidazole,fluconazole', 'high',
+        'These antibiotics/antifungals inhibit warfarin metabolism, increasing INR and bleeding risk.'],
+      ['medication', 'warfarin,coumadin',
+        'amiodarone', 'high',
+        'Amiodarone inhibits warfarin metabolism, sharply increasing INR and bleeding risk.'],
+      ['medication', 'phenelzine,tranylcypromine,isocarboxazid',
+        'sertraline,fluoxetine,paroxetine,pseudoephedrine,phenylephrine', 'high',
+        'Combining an MAOI with an SSRI or decongestant risks serotonin syndrome or a hypertensive crisis.'],
+      ['medication', 'simvastatin,atorvastatin,lovastatin',
+        'clarithromycin,erythromycin,itraconazole', 'high',
+        'These interactions raise statin blood levels and significantly increase the risk of rhabdomyolysis.'],
+      ['medication', 'methotrexate',
+        'ibuprofen,naproxen,aspirin', 'moderate',
+        'NSAIDs reduce methotrexate clearance, increasing the risk of methotrexate toxicity.'],
+      ['medication', 'lithium',
+        'ibuprofen,naproxen,diclofenac', 'moderate',
+        'NSAIDs reduce renal clearance of lithium, risking lithium toxicity.'],
+      ['medication', 'lisinopril,enalapril,ramipril',
+        'spironolactone,potassium chloride,potassium supplement', 'moderate',
+        'Combining an ACE inhibitor with a potassium-sparing agent risks dangerous hyperkalemia.'],
+      ['medication', 'clopidogrel,plavix',
+        'omeprazole,esomeprazole', 'moderate',
+        'Omeprazole/esomeprazole can inhibit clopidogrel activation, reducing its antiplatelet effect.'],
+      ['medication', 'digoxin',
+        'clarithromycin,erythromycin,amiodarone', 'high',
+        'These drugs raise digoxin levels, risking digoxin toxicity.'],
+    ];
+    for (const row of seed) insert.run(...row);
+    console.log(`Seeded ${seed.length} contraindication rules.`);
+  }
+}
+
 module.exports = db;
