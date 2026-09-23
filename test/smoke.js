@@ -693,6 +693,50 @@ async function main() {
     });
     assert(res.status === 404, 'the standalone override endpoint has been removed');
 
+    // Editing an existing medication into a hard-stopped name is enforced
+    // the same way as creating one.
+    res = await fetch(`${BASE}/patients/token/${cardToken}/medications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: 'Metformin' }),
+    });
+    const editTarget = await res.json();
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/medications/${editTarget.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: 'Amoxicillin' }),
+    });
+    assert(res.status === 409, 'editing a medication into a hard-stopped name is rejected without a reason');
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/medications/${editTarget.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        name: 'Amoxicillin',
+        overrideReason: 'Same desensitization protocol.',
+      }),
+    });
+    assert(res.status === 200, 'the edit succeeds once an override reason is supplied');
+
+    // Editing a medication's own name never sees its own pre-edit value as
+    // a colliding "existing medication" — renaming Warfarin to Ibuprofen
+    // must not trip the warfarin/NSAID hard stop against itself.
+    res = await fetch(`${BASE}/patients/token/${cardToken}/medications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: 'Warfarin' }),
+    });
+    const selfEditTarget = await res.json();
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/medications/${selfEditTarget.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: 'Ibuprofen' }),
+    });
+    assert(res.status === 200,
+      "renaming a medication does not trigger a hard stop against its own pre-edit value");
+
     // --- Contraindication engine: admin-only rule CRUD ---
     res = await fetch(`${BASE}/contraindication-rules`, { headers: { Authorization: `Bearer ${token}` } });
     assert(res.status === 200, 'any doctor can list contraindication rules');

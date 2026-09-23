@@ -834,11 +834,16 @@ function registerHealthRecords({ path, table, requiredKeys, columns, orderBy, co
       }
     }
 
+    const doctor = doctorFromRequest(req);
+    const blocked = enforceContraindication({
+      contraindicationField, req, patient, doctor, excludeId: existing.id,
+    });
+    if (blocked) return res.status(409).json(blocked);
+
     const setClause = columns.map((c) => `${c.db} = ?`).join(', ');
     const values = columns.map((c) => bodyValue(req, c));
     db.prepare(`UPDATE ${table} SET ${setClause} WHERE id = ?`).run(...values, existing.id);
 
-    const doctor = doctorFromRequest(req);
     logAudit(patient.id, doctor ? doctor.id : null, `${table}_edit`, `Edited a ${path} entry`);
     res.json(db.prepare(`${rowSelect} WHERE ${table}.id = ?`).get(existing.id));
   });
