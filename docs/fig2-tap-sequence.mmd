@@ -1,0 +1,31 @@
+sequenceDiagram
+    participant P as Patient card
+    participant R as ACR122U
+    participant B as Reader bridge
+    participant S as Backend API
+    participant AI as AI subsystem
+    participant U as Portal
+
+    P->>R: Card enters field
+    R->>B: card event (UID — logged only, never trusted)
+    B->>B: readToken() from NTAG data blocks
+    alt No token written
+        B-->>B: "Not a Medical<br/>Identification Card" — abort
+    end
+    B->>S: POST /api/taps { token }
+    S-->>U: SSE broadcast — portal opens the record
+    B->>S: GET /api/patients/token/:token
+    S->>S: SHA-256(token) → cards lookup, status='active'
+    alt Card revoked or unknown
+        S-->>B: 404 — no record
+    end
+    S->>S: Write audit_log row
+    S-->>U: LAYER 1 — Emergency Profile (<5 s, no login)
+
+    Note over U: Triage proceeds immediately
+
+    U->>S: Physician authenticates
+    S->>S: Verify credentials, log access + purpose
+    S->>AI: Longitudinal data for this patient
+    AI-->>S: Executive Summary + contraindication flags
+    S-->>U: LAYER 2 — full history, trends, AI alerts
