@@ -116,9 +116,11 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
 
   /// Doctor-only pre-check: cross-references this medication against the
   /// patient's logged allergies and active medications before it's saved.
-  /// Returns false if the doctor cancels out of a warning; true otherwise
-  /// (including when nothing was flagged at all).
-  Future<bool> _runContraindicationCheck() async {
+  /// `(proceed: false, ...)` means the doctor cancelled out of a warning.
+  /// `overrideReason` is set when a hard stop was accepted with a typed
+  /// reason — passed straight into the save/update call, which is what
+  /// actually enforces and audits the override now, not this pre-check.
+  Future<({bool proceed, String? overrideReason})> _runContraindicationCheck() async {
     final result = await MedThruApi.instance.checkContraindication(
       widget.token,
       treatmentType: 'medication',
@@ -127,23 +129,59 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     );
     final hardStops = (result['hardStops'] as List<dynamic>).cast<Map<String, dynamic>>();
     if (hardStops.isNotEmpty) {
-      if (!mounted) return false;
+      if (!mounted) return (proceed: false, overrideReason: null);
       final reason = await showHardStopOverrideDialog(context, hardStops: hardStops);
-      if (reason == null || !mounted) return false;
-      await MedThruApi.instance.overrideContraindication(
-        widget.token,
-        ruleIds: hardStops.map((h) => h['ruleId'] as int).toList(),
-        reason: reason,
-        treatmentName: _name.text.trim(),
-      );
-      return true;
+      if (reason == null || !mounted) return (proceed: false, overrideReason: null);
+      return (proceed: true, overrideReason: reason);
     }
     final aiFlag = result['aiFlag'] as Map<String, dynamic>?;
     if (aiFlag != null) {
-      if (!mounted) return false;
-      return showAiWarningDialog(context, aiFlag: aiFlag);
+      if (!mounted) return (proceed: false, overrideReason: null);
+      final proceed = await showAiWarningDialog(context, aiFlag: aiFlag);
+      return (proceed: proceed, overrideReason: null);
     }
-    return true;
+    return (proceed: true, overrideReason: null);
+  }
+
+  Future<Map<String, dynamic>> _saveEntry(String? overrideReason) {
+    return _isEdit
+        ? MedThruApi.instance.updateMedication(
+            widget.token,
+            widget.existing!['id'] as int,
+            name: _name.text.trim(),
+            dosage: _dosage.text.trim(),
+            frequency: _frequency.text.trim(),
+            startDate: _startDate != null ? _fmt(_startDate!) : null,
+            endDate: _endDate != null ? _fmt(_endDate!) : null,
+            note: _note.text.trim(),
+            overrideReason: overrideReason,
+          )
+        : MedThruApi.instance.addMedication(
+            widget.token,
+            name: _name.text.trim(),
+            dosage: _dosage.text.trim(),
+            frequency: _frequency.text.trim(),
+            startDate: _startDate != null ? _fmt(_startDate!) : null,
+            endDate: _endDate != null ? _fmt(_endDate!) : null,
+            note: _note.text.trim(),
+            overrideReason: overrideReason,
+          );
+  }
+
+  /// Attempts the actual create/update call. If the server rejects it with
+  /// a fresh hard stop the doctor never saw — the check-time and save-time
+  /// states diverged, e.g. someone else just logged a new allergy — shows
+  /// the same override dialog once and retries with the collected reason.
+  /// Returns null if the doctor cancels out of that retry dialog.
+  Future<Map<String, dynamic>?> _saveWithRetry(String? overrideReason) async {
+    try {
+      return await _saveEntry(overrideReason);
+    } on ContraindicationBlockedException catch (blocked) {
+      if (!mounted) return null;
+      final reason = await showHardStopOverrideDialog(context, hardStops: blocked.hardStops);
+      if (reason == null || !mounted) return null;
+      return _saveEntry(reason);
+    }
   }
 
   Future<void> _save() async {
@@ -156,39 +194,26 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
       _error = null;
     });
     try {
-      if (!_isEdit && MedThruApi.instance.isLoggedIn) {
+      String? overrideReason;
+      if (MedThruApi.instance.isLoggedIn) {
         if (mounted) setState(() => _checkingInteractions = true);
-        bool proceed;
+        ({bool proceed, String? overrideReason}) checkResult;
         try {
-          proceed = await _runContraindicationCheck();
+          checkResult = await _runContraindicationCheck();
         } finally {
           if (mounted) setState(() => _checkingInteractions = false);
         }
-        if (!proceed) {
+        if (!checkResult.proceed) {
           if (mounted) setState(() => _saving = false);
           return;
         }
+        overrideReason = checkResult.overrideReason;
       }
-      final entry = _isEdit
-          ? await MedThruApi.instance.updateMedication(
-              widget.token,
-              widget.existing!['id'] as int,
-              name: _name.text.trim(),
-              dosage: _dosage.text.trim(),
-              frequency: _frequency.text.trim(),
-              startDate: _startDate != null ? _fmt(_startDate!) : null,
-              endDate: _endDate != null ? _fmt(_endDate!) : null,
-              note: _note.text.trim(),
-            )
-          : await MedThruApi.instance.addMedication(
-              widget.token,
-              name: _name.text.trim(),
-              dosage: _dosage.text.trim(),
-              frequency: _frequency.text.trim(),
-              startDate: _startDate != null ? _fmt(_startDate!) : null,
-              endDate: _endDate != null ? _fmt(_endDate!) : null,
-              note: _note.text.trim(),
-            );
+      final entry = await _saveWithRetry(overrideReason);
+      if (entry == null) {
+        if (mounted) setState(() => _saving = false);
+        return;
+      }
       await _applyReminder(entry['id'] as int);
       if (!mounted) return;
       Navigator.pop(context, entry);
