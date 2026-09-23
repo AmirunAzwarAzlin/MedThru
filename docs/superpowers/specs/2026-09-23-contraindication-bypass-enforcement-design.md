@@ -233,3 +233,25 @@ Extend `test/smoke.js` (no new unit-test file — this reuses
 Flutter: no widget-test harness exists for these screens (established
 project convention). Verify via `flutter analyze`, plus a manual
 walkthrough note covering both the create and the now-enforced edit flow.
+
+## Known limitations (accepted)
+
+Two edge cases were raised in review and are accepted as-is rather than fixed:
+
+- **An override reason can cover a hard stop the doctor never saw.** If the pre-check
+  shows rule A, the doctor types a reason, and — before the save lands — a new allergy
+  is logged that also matches rule B, the write is still accepted and both A and B are
+  logged as overridden under the one reason the doctor typed for A. The window is
+  narrow (between the pre-check call and the save call) and this is still a strict
+  improvement over the pre-existing behavior (no enforcement at all), but it means the
+  audit trail can show a rule being "overridden" that was never actually shown to the
+  doctor. Closing this fully would require the client to send back the specific rule
+  ids it showed the doctor, with the server rejecting if its own computed set isn't a
+  subset of those — not implemented, since the gap is narrow and mostly theoretical.
+- **Every edit that touches a hard-stopped medication's name re-triggers the check,
+  even if the name isn't what changed.** Editing only the dosage of an
+  already-overridding Amoxicillin entry re-runs the hard-stop check against the
+  (unchanged) name and requires a fresh override reason. This is intentional, not an
+  oversight — every write is independently re-audited, which is the same principle
+  behind enforcing at write time in the first place — but it does mean a doctor making
+  an unrelated small edit to a flagged medication will be asked to re-justify it.

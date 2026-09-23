@@ -681,6 +681,7 @@ class MedThruApi extends ChangeNotifier {
     required String treatmentType,
     required String treatmentName,
     String? dosage,
+    int? excludeMedicationId,
   }) async {
     final res = await http.post(
       Uri.parse('$_baseUrl/patients/token/$token/contraindication-check'),
@@ -689,6 +690,7 @@ class MedThruApi extends ChangeNotifier {
         'treatmentType': treatmentType,
         'treatmentName': treatmentName,
         if (dosage != null && dosage.isNotEmpty) 'dosage': dosage,
+        if (excludeMedicationId != null) 'excludeMedicationId': excludeMedicationId,
       }),
     );
     if (res.statusCode != 200) {

@@ -571,6 +571,48 @@ async function main() {
     assert(clearCheck.hardStops.length === 0, 'paracetamol is not flagged for this patient');
     assert(clearCheck.aiFlag === null, 'no GEMINI_API_KEY is configured in CI, so the AI layer stays null rather than erroring');
 
+    // The advisory pre-check must exclude the medication being edited from
+    // its own trigger set, same as the enforced write path already does —
+    // otherwise renaming a medication shows a spurious hard-stop dialog.
+    res = await fetch(`${BASE}/patients/token/${cardToken}/medications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: 'Warfarin', overrideReason: 'Setup for pre-check exclusion test.' }),
+    });
+    const precheckSelfRow = await res.json();
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/contraindication-check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        treatmentType: 'medication',
+        treatmentName: 'Ibuprofen',
+        excludeMedicationId: precheckSelfRow.id,
+      }),
+    });
+    const precheckExcluded = await res.json();
+    assert(precheckExcluded.hardStops.length === 0,
+      'excludeMedicationId keeps the pre-check from flagging a medication against its own pre-edit value');
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/contraindication-check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ treatmentType: 'medication', treatmentName: 'Ibuprofen' }),
+    });
+    const precheckIncluded = await res.json();
+    assert(precheckIncluded.hardStops.length > 0,
+      'without excludeMedicationId the same Warfarin row is correctly still a real hard stop (confirms the exclusion above was doing real work, not coincidental)');
+
+    // Clean up: this active Warfarin row was only needed as the pre-check's
+    // "existing medication" trigger above. Remove it so it doesn't leak into
+    // the warfarin/NSAID assertions further down, which expect no active
+    // warfarin prescription to exist yet.
+    res = await fetch(`${BASE}/patients/token/${cardToken}/medications/${precheckSelfRow.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assert(res.status === 200, 'clean up the pre-check test Warfarin row');
+
     // An expired medication (end_date in the past) must not count as "active"
     // for the hard-stop rule table — otherwise a long-discontinued drug could
     // wrongly block (or fail to block) a new prescription forever.
@@ -700,6 +742,7 @@ async function main() {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ name: 'Metformin' }),
     });
+    assert(res.status === 201, 'add Metformin as the PUT-enforcement edit target');
     const editTarget = await res.json();
 
     res = await fetch(`${BASE}/patients/token/${cardToken}/medications/${editTarget.id}`, {
@@ -727,6 +770,7 @@ async function main() {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ name: 'Warfarin' }),
     });
+    assert(res.status === 201, 'add Warfarin as the self-exclusion edit target');
     const selfEditTarget = await res.json();
 
     res = await fetch(`${BASE}/patients/token/${cardToken}/medications/${selfEditTarget.id}`, {
@@ -736,6 +780,30 @@ async function main() {
     });
     assert(res.status === 200,
       "renaming a medication does not trigger a hard stop against its own pre-edit value");
+
+    // Prove editing a vaccination never uses its own row id to wrongly
+    // exclude a *medications* row of the same numeric id (the id spaces are
+    // independent per table, so this can only be tested by forcing a
+    // collision directly).
+    {
+      const sharedId = 999001;
+      const idProbeDb = new DatabaseSync(DB_PATH);
+      idProbeDb.prepare(
+        `INSERT INTO medications (id, patient_id, name, doctor_id, source) VALUES (?, ?, 'Warfarin', NULL, 'doctor')`
+      ).run(sharedId, patient.id);
+      idProbeDb.prepare(
+        `INSERT INTO vaccinations (id, patient_id, vaccine, administered_at, doctor_id, source) VALUES (?, ?, 'Placeholder vaccine', '2026-01-01', NULL, 'doctor')`
+      ).run(sharedId, patient.id);
+      idProbeDb.close();
+    }
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/vaccinations/999001`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ vaccine: 'Ibuprofen', administeredAt: '2026-01-01' }),
+    });
+    assert(res.status === 409,
+      "editing a vaccination never excludes a medications row that happens to share the same numeric id");
 
     // --- Contraindication engine: admin-only rule CRUD ---
     res = await fetch(`${BASE}/contraindication-rules`, { headers: { Authorization: `Bearer ${token}` } });

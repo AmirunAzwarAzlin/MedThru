@@ -126,6 +126,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
       treatmentType: 'medication',
       treatmentName: _name.text.trim(),
       dosage: _dosage.text.trim(),
+      excludeMedicationId: _isEdit ? widget.existing!['id'] as int : null,
     );
     final hardStops = (result['hardStops'] as List<dynamic>).cast<Map<String, dynamic>>();
     if (hardStops.isNotEmpty) {

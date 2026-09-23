@@ -836,7 +836,8 @@ function registerHealthRecords({ path, table, requiredKeys, columns, orderBy, co
 
     const doctor = doctorFromRequest(req);
     const blocked = enforceContraindication({
-      contraindicationField, req, patient, doctor, excludeId: existing.id,
+      contraindicationField, req, patient, doctor,
+      excludeId: table === 'medications' ? existing.id : undefined,
     });
     if (blocked) return res.status(409).json(blocked);
 
@@ -957,13 +958,16 @@ registerHealthRecords({
 // --- Contraindication engine ---
 //
 // Cross-references a proposed medication or vaccination against the
-// patient's logged allergies and active medications before it's saved. A
-// deterministic hard-stop rule table (contraindication_rules) always runs
-// first and can never be silently overridden; Gemini only judges the softer
-// cases left over once the hard-stop table finds nothing (see
-// contraindication.js / contraindication-gemini.js). Doctor-only: this is
-// about a doctor proposing a *new* treatment, not a patient's own
-// self-reported entries.
+// patient's logged allergies and active medications. The deterministic
+// hard-stop rule table (contraindication_rules) is enforced right inside
+// the medications/vaccinations write path itself (see
+// registerHealthRecords's `contraindicationField` and
+// enforceContraindication below) — a hard stop cannot be saved past without
+// a typed override reason, whether creating or editing. Gemini only judges
+// the softer cases left over once the hard-stop table finds nothing (see
+// contraindication.js / contraindication-gemini.js), and is advisory only
+// via /contraindication-check — it never blocks a write. Doctor-only
+// throughout: a patient's own self-reported entries are never checked.
 
 const TREATMENT_TYPES = ['medication', 'vaccination'];
 
@@ -975,11 +979,12 @@ function activeMedicationNames(patientId, excludeId = null) {
   ).all(patientId, excludeId, excludeId);
 }
 
-function activeMedicationsDetailed(patientId) {
+function activeMedicationsDetailed(patientId, excludeId = null) {
   return db.prepare(
     `SELECT name, dosage, frequency FROM medications
-     WHERE patient_id = ? AND (end_date IS NULL OR end_date >= date('now'))`
-  ).all(patientId);
+     WHERE patient_id = ? AND (end_date IS NULL OR end_date >= date('now'))
+       AND (? IS NULL OR id != ?)`
+  ).all(patientId, excludeId, excludeId);
 }
 
 /// Runs the deterministic hard-stop check for a doctor-sourced medication/
@@ -1028,7 +1033,7 @@ app.post('/api/patients/token/:token/contraindication-check', lookupLimiter, req
     return res.status(404).json({ error: 'No patient found for this card' });
   }
 
-  const { treatmentType, treatmentName, dosage } = req.body;
+  const { treatmentType, treatmentName, dosage, excludeMedicationId } = req.body;
   if (!TREATMENT_TYPES.includes(treatmentType)) {
     return res.status(400).json({ error: `treatmentType must be one of: ${TREATMENT_TYPES.join(', ')}` });
   }
@@ -1042,7 +1047,7 @@ app.post('/api/patients/token/:token/contraindication-check', lookupLimiter, req
   const hardStops = checkHardStops({
     rules,
     allergies: allergenRows,
-    medications: activeMedicationNames(patient.id),
+    medications: activeMedicationNames(patient.id, excludeMedicationId ?? null),
     proposedName: treatmentName,
   });
 
@@ -1050,7 +1055,7 @@ app.post('/api/patients/token/:token/contraindication-check', lookupLimiter, req
   if (hardStops.length === 0) {
     aiFlag = await judgeContraindication({
       allergies: db.prepare(`SELECT allergen, reaction, severity FROM allergies WHERE patient_id = ?`).all(patient.id),
-      medications: activeMedicationsDetailed(patient.id),
+      medications: activeMedicationsDetailed(patient.id, excludeMedicationId ?? null),
       proposedTreatment: { name: treatmentName, type: treatmentType, dosage: dosage || null },
     });
   }
