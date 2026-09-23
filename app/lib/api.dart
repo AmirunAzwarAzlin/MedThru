@@ -10,6 +10,17 @@ class PasswordRequiredException implements Exception {
   const PasswordRequiredException();
 }
 
+/// Thrown when a medication/vaccination save or edit is rejected because it
+/// matches a hard-stop contraindication rule and no override reason was
+/// supplied. Carries the matched rules so the caller can show the same
+/// override dialog reactively — this is the race-condition path, where the
+/// pre-save check came back clean but something changed before the actual
+/// write (e.g. a new allergy was logged in between).
+class ContraindicationBlockedException implements Exception {
+  const ContraindicationBlockedException(this.hardStops);
+  final List<Map<String, dynamic>> hardStops;
+}
+
 /// Talks to the MedThru backend (server.js) and holds the current session.
 ///
 /// Extends [ChangeNotifier] so widgets can rebuild when the doctor logs in
@@ -480,6 +491,15 @@ class MedThruApi extends ChangeNotifier {
       headers: _headersFor(token),
       body: jsonEncode(fields),
     );
+    if (res.statusCode == 409) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      if (body['hardStops'] is List) {
+        throw ContraindicationBlockedException(
+          (body['hardStops'] as List<dynamic>).cast<Map<String, dynamic>>(),
+        );
+      }
+      throw _errorFrom(res, 'Could not save entry');
+    }
     if (res.statusCode != 201) {
       throw _errorFrom(res, 'Could not save entry');
     }
@@ -493,6 +513,15 @@ class MedThruApi extends ChangeNotifier {
       headers: _headersFor(token),
       body: jsonEncode(fields),
     );
+    if (res.statusCode == 409) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      if (body['hardStops'] is List) {
+        throw ContraindicationBlockedException(
+          (body['hardStops'] as List<dynamic>).cast<Map<String, dynamic>>(),
+        );
+      }
+      throw _errorFrom(res, 'Could not update entry');
+    }
     if (res.statusCode != 200) {
       throw _errorFrom(res, 'Could not update entry');
     }
@@ -560,6 +589,7 @@ class MedThruApi extends ChangeNotifier {
     String? startDate,
     String? endDate,
     String? note,
+    String? overrideReason,
   }) =>
       _addByToken('medications', token, {
         'name': name,
@@ -568,6 +598,7 @@ class MedThruApi extends ChangeNotifier {
         if (startDate != null && startDate.isNotEmpty) 'startDate': startDate,
         if (endDate != null && endDate.isNotEmpty) 'endDate': endDate,
         if (note != null && note.isNotEmpty) 'note': note,
+        if (overrideReason != null && overrideReason.isNotEmpty) 'overrideReason': overrideReason,
       });
 
   Future<Map<String, dynamic>> updateMedication(
@@ -579,6 +610,7 @@ class MedThruApi extends ChangeNotifier {
     String? startDate,
     String? endDate,
     String? note,
+    String? overrideReason,
   }) =>
       _updateByToken('medications', token, id, {
         'name': name,
@@ -587,6 +619,7 @@ class MedThruApi extends ChangeNotifier {
         if (startDate != null && startDate.isNotEmpty) 'startDate': startDate,
         if (endDate != null && endDate.isNotEmpty) 'endDate': endDate,
         if (note != null && note.isNotEmpty) 'note': note,
+        if (overrideReason != null && overrideReason.isNotEmpty) 'overrideReason': overrideReason,
       });
 
   Future<void> deleteMedication(String token, int id) => _deleteByToken('medications', token, id);
@@ -604,6 +637,7 @@ class MedThruApi extends ChangeNotifier {
     int? doseNumber,
     String? nextDue,
     String? note,
+    String? overrideReason,
   }) =>
       _addByToken('vaccinations', token, {
         'vaccine': vaccine,
@@ -611,6 +645,7 @@ class MedThruApi extends ChangeNotifier {
         if (doseNumber != null) 'doseNumber': doseNumber,
         if (nextDue != null && nextDue.isNotEmpty) 'nextDue': nextDue,
         if (note != null && note.isNotEmpty) 'note': note,
+        if (overrideReason != null && overrideReason.isNotEmpty) 'overrideReason': overrideReason,
       });
 
   Future<Map<String, dynamic>> updateVaccination(
@@ -621,6 +656,7 @@ class MedThruApi extends ChangeNotifier {
     int? doseNumber,
     String? nextDue,
     String? note,
+    String? overrideReason,
   }) =>
       _updateByToken('vaccinations', token, id, {
         'vaccine': vaccine,
@@ -628,6 +664,7 @@ class MedThruApi extends ChangeNotifier {
         if (doseNumber != null) 'doseNumber': doseNumber,
         if (nextDue != null && nextDue.isNotEmpty) 'nextDue': nextDue,
         if (note != null && note.isNotEmpty) 'note': note,
+        if (overrideReason != null && overrideReason.isNotEmpty) 'overrideReason': overrideReason,
       });
 
   Future<void> deleteVaccination(String token, int id) =>
@@ -658,26 +695,6 @@ class MedThruApi extends ChangeNotifier {
       throw _errorFrom(res, 'Could not check for contraindications');
     }
     return jsonDecode(res.body) as Map<String, dynamic>;
-  }
-
-  Future<void> overrideContraindication(
-    String token, {
-    required List<int> ruleIds,
-    required String reason,
-    required String treatmentName,
-  }) async {
-    final res = await http.post(
-      Uri.parse('$_baseUrl/patients/token/$token/contraindication-override'),
-      headers: _headers,
-      body: jsonEncode({
-        'ruleIds': ruleIds,
-        'reason': reason,
-        'treatmentName': treatmentName,
-      }),
-    );
-    if (res.statusCode != 201) {
-      throw _errorFrom(res, 'Could not record the override');
-    }
   }
 
   Future<List<Map<String, dynamic>>> getContraindicationRules() async {
