@@ -18,10 +18,10 @@ jobs:
 
       # Deliberately not `npm ci`: nfc-pcsc is a native module for the
       # physical card reader, which needs no CI coverage and isn't
-      # guaranteed to build on a bare runner. server.js and db.js only need
-      # these three (db.js's SQLite access is node:sqlite, built in).
+      # guaranteed to build on a bare runner. The server and tests need only
+      # these (db.js's SQLite access is node:sqlite, built in).
       - name: Install runtime dependencies
-        run: npm install --no-save express jsonwebtoken bcryptjs
+        run: npm install --no-save express jsonwebtoken bcryptjs dotenv @google/genai
 
       - name: Syntax check
         run: |
