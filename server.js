@@ -761,7 +761,7 @@ function bodyValue(req, col) {
   return v;
 }
 
-function registerHealthRecords({ path, table, requiredKeys, columns, orderBy }) {
+function registerHealthRecords({ path, table, requiredKeys, columns, orderBy, contraindicationField }) {
   const rowSelect = `SELECT ${table}.*, doctors.name AS doctor_name
     FROM ${table} LEFT JOIN doctors ON doctors.id = ${table}.doctor_id`;
 
@@ -779,6 +779,9 @@ function registerHealthRecords({ path, table, requiredKeys, columns, orderBy }) 
     }
 
     const doctor = doctorFromRequest(req);
+    const blocked = enforceContraindication({ contraindicationField, req, patient, doctor });
+    if (blocked) return res.status(409).json(blocked);
+
     const dbColumns = ['patient_id', ...columns.map((c) => c.db), 'doctor_id', 'source'];
     const values = [
       patient.id,
@@ -877,6 +880,7 @@ registerHealthRecords({
   path: 'medications',
   table: 'medications',
   requiredKeys: ['name'],
+  contraindicationField: 'name',
   columns: [
     { body: 'name', db: 'name' },
     { body: 'dosage', db: 'dosage' },
@@ -892,6 +896,7 @@ registerHealthRecords({
   path: 'vaccinations',
   table: 'vaccinations',
   requiredKeys: ['vaccine', 'administeredAt'],
+  contraindicationField: 'vaccine',
   columns: [
     { body: 'vaccine', db: 'vaccine' },
     { body: 'doseNumber', db: 'dose_number' },
@@ -957,11 +962,12 @@ registerHealthRecords({
 
 const TREATMENT_TYPES = ['medication', 'vaccination'];
 
-function activeMedicationNames(patientId) {
+function activeMedicationNames(patientId, excludeId = null) {
   return db.prepare(
     `SELECT name FROM medications
-     WHERE patient_id = ? AND (end_date IS NULL OR end_date >= date('now'))`
-  ).all(patientId);
+     WHERE patient_id = ? AND (end_date IS NULL OR end_date >= date('now'))
+       AND (? IS NULL OR id != ?)`
+  ).all(patientId, excludeId, excludeId);
 }
 
 function activeMedicationsDetailed(patientId) {
@@ -969,6 +975,46 @@ function activeMedicationsDetailed(patientId) {
     `SELECT name, dosage, frequency FROM medications
      WHERE patient_id = ? AND (end_date IS NULL OR end_date >= date('now'))`
   ).all(patientId);
+}
+
+/// Runs the deterministic hard-stop check for a doctor-sourced medication/
+/// vaccination write, when the call site opted in via `contraindicationField`.
+/// Returns null to let the write through (nothing matched, or a valid
+/// override reason was supplied and has already been audited); returns a
+/// response body to send with 409 when the write must be rejected.
+///
+/// `excludeId` is the row's own id on a PUT, so editing a medication's name
+/// never sees its own pre-edit value as a colliding "existing medication" —
+/// without this, renaming a row would spuriously match itself. Undefined on
+/// a POST, where there is no existing row to exclude.
+function enforceContraindication({ contraindicationField, req, patient, doctor, excludeId }) {
+  if (!contraindicationField || !doctor) return null;
+
+  const proposedName = req.body[contraindicationField];
+  if (typeof proposedName !== 'string' || !proposedName.trim()) return null;
+
+  const allergenRows = db.prepare(`SELECT allergen FROM allergies WHERE patient_id = ?`).all(patient.id);
+  const rules = db.prepare(`SELECT * FROM contraindication_rules`).all();
+  const hardStops = checkHardStops({
+    rules,
+    allergies: allergenRows,
+    medications: activeMedicationNames(patient.id, excludeId ?? null),
+    proposedName,
+  });
+
+  if (hardStops.length === 0) return null;
+
+  const overrideReason = req.body.overrideReason;
+  if (typeof overrideReason === 'string' && overrideReason.trim()) {
+    logAudit(patient.id, doctor.id, 'contraindication_override', JSON.stringify({
+      proposedName,
+      ruleIds: hardStops.map((h) => h.ruleId),
+      reason: overrideReason.trim(),
+    }));
+    return null;
+  }
+
+  return { error: 'This treatment may be dangerous for this patient.', hardStops };
 }
 
 app.post('/api/patients/token/:token/contraindication-check', lookupLimiter, requireDoctor, async (req, res) => {
@@ -1014,29 +1060,6 @@ app.post('/api/patients/token/:token/contraindication-check', lookupLimiter, req
   }
 
   res.json({ hardStops, aiFlag });
-});
-
-app.post('/api/patients/token/:token/contraindication-override', lookupLimiter, requireDoctor, (req, res) => {
-  const patient = resolvePatientFromReq(req);
-  if (!patient) {
-    return res.status(404).json({ error: 'No patient found for this card' });
-  }
-
-  const { ruleIds, reason, treatmentName } = req.body;
-  if (typeof reason !== 'string' || !reason.trim()) {
-    return res.status(400).json({ error: 'reason is required' });
-  }
-  if (typeof treatmentName !== 'string' || !treatmentName.trim()) {
-    return res.status(400).json({ error: 'treatmentName is required' });
-  }
-
-  logAudit(patient.id, req.doctor.id, 'contraindication_override', JSON.stringify({
-    treatmentName,
-    ruleIds: Array.isArray(ruleIds) ? ruleIds : [],
-    reason: reason.trim(),
-  }));
-
-  res.status(201).json({ logged: true });
 });
 
 app.get('/api/contraindication-rules', requireDoctor, (_req, res) => {

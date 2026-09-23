@@ -43,7 +43,14 @@ function assert(condition, message) {
 }
 
 async function main() {
-  const proc = spawn(process.execPath, ['server.js'], { cwd: ROOT });
+  // The lookup rate limiter is keyed per-IP across every card-token route,
+  // and this smoke test drives dozens of such requests against localhost
+  // within a single window. Raise the ceiling for the test-spawned server
+  // only; production keeps its default via MEDIC_LOOKUP_LIMIT unset.
+  const proc = spawn(process.execPath, ['server.js'], {
+    cwd: ROOT,
+    env: { ...process.env, MEDIC_LOOKUP_LIMIT: '500' },
+  });
 
   try {
     await waitForServer(proc);
@@ -591,23 +598,100 @@ async function main() {
     });
     assert(res.status === 401, 'the contraindication check requires a doctor bearer token');
 
-    res = await fetch(`${BASE}/patients/token/${cardToken}/contraindication-override`, {
+    // The write path itself now enforces the hard stop, not just the
+    // advisory /contraindication-check endpoint. Saving the same
+    // hard-stopped medication with no override reason is rejected...
+    res = await fetch(`${BASE}/patients/token/${cardToken}/medications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: 'Amoxicillin' }),
+    });
+    assert(res.status === 409, 'saving a hard-stopped medication without a reason is rejected');
+    const blockedSave = await res.json();
+    assert(blockedSave.hardStops.length > 0, 'the 409 response carries the matched hard stops');
+
+    // ...but succeeds, and is audited, once a reason is supplied.
+    res = await fetch(`${BASE}/patients/token/${cardToken}/medications`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
-        ruleIds: amoxCheck.hardStops.map((h) => h.ruleId),
-        reason: 'Desensitization protocol already in place; proceeding under supervision.',
-        treatmentName: 'Amoxicillin',
+        name: 'Amoxicillin',
+        overrideReason: 'Desensitization protocol already in place; proceeding under supervision.',
       }),
     });
-    assert(res.status === 201, 'a doctor can log an override for a hard-stopped treatment');
+    assert(res.status === 201, 'the same save succeeds once an override reason is supplied');
 
     res = await fetch(`${BASE}/patients/${patient.id}/audit`, { headers: { Authorization: `Bearer ${token}` } });
-    const auditEntries = await res.json();
-    assert(auditEntries.some((a) => a.action === 'contraindication_override'),
-      'the override is written to the audit log');
-    assert(auditEntries.some((a) => a.action === 'contraindication_flagged'),
-      'the flagged check itself is also written to the audit log');
+    const auditAfterSave = await res.json();
+    assert(auditAfterSave.some((a) => a.action === 'contraindication_override'),
+      'the override is written to the audit log by the save itself');
+    assert(auditAfterSave.some((a) => a.action === 'medications_add'),
+      'the normal add-entry audit line is still written alongside it');
+    assert(auditAfterSave.some((a) => a.action === 'contraindication_flagged'),
+      'the earlier /contraindication-check call is also on the audit trail');
+
+    // A patient's own self-reported save (no doctor bearer token) is never
+    // blocked, regardless of what it matches.
+    res = await fetch(`${BASE}/patients/token/${cardToken}/medications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Amoxicillin' }),
+    });
+    assert(res.status === 201, "a patient's own self-reported save is never blocked");
+
+    // An unrelated save writes no contraindication audit entry.
+    res = await fetch(`${BASE}/patients/${patient.id}/audit`, { headers: { Authorization: `Bearer ${token}` } });
+    const overridesBeforeUnrelated =
+      (await res.json()).filter((a) => a.action === 'contraindication_override').length;
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/medications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: 'Paracetamol' }),
+    });
+    assert(res.status === 201, 'an unrelated medication saves normally');
+
+    res = await fetch(`${BASE}/patients/${patient.id}/audit`, { headers: { Authorization: `Bearer ${token}` } });
+    const overridesAfterUnrelated =
+      (await res.json()).filter((a) => a.action === 'contraindication_override').length;
+    assert(overridesAfterUnrelated === overridesBeforeUnrelated,
+      'an unrelated save writes no contraindication audit entry');
+
+    // The check applies to vaccinations too, via a different body field
+    // (`vaccine`, not `name`).
+    res = await fetch(`${BASE}/patients/token/${cardToken}/allergies`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ allergen: 'Egg' }),
+    });
+    assert(res.status === 201, 'add an egg allergy for the vaccination hard-stop test');
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/vaccinations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ vaccine: 'Influenza vaccine', administeredAt: '2026-01-01' }),
+    });
+    assert(res.status === 409, 'an egg-based flu vaccine is blocked for a patient with a logged egg allergy');
+
+    res = await fetch(`${BASE}/patients/token/${cardToken}/vaccinations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        vaccine: 'Influenza vaccine',
+        administeredAt: '2026-01-01',
+        overrideReason: 'Egg-free formulation used, confirmed with pharmacy.',
+      }),
+    });
+    assert(res.status === 201, 'the vaccination saves once an override reason is supplied');
+
+    // The standalone override endpoint is gone — enforcement now lives in
+    // the write path itself.
+    res = await fetch(`${BASE}/patients/token/${cardToken}/contraindication-override`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ruleIds: [], reason: 'x', treatmentName: 'x' }),
+    });
+    assert(res.status === 404, 'the standalone override endpoint has been removed');
 
     // --- Contraindication engine: admin-only rule CRUD ---
     res = await fetch(`${BASE}/contraindication-rules`, { headers: { Authorization: `Bearer ${token}` } });
