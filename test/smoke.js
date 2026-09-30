@@ -10,7 +10,9 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const ROOT = path.join(__dirname, '..');
-const DB_PATH = path.join(ROOT, 'medthru.db');
+// A separate file from the app's medthru.db: this test deletes it on every
+// run, and the spawned server is pointed at it via MEDTHRU_DB.
+const DB_PATH = path.join(ROOT, 'medthru.test.db');
 const BASE = 'http://localhost:3000/api';
 
 // Start from a clean database so the test is deterministic regardless of
@@ -49,7 +51,7 @@ async function main() {
   // only; production keeps its default via MEDIC_LOOKUP_LIMIT unset.
   const proc = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
-    env: { ...process.env, MEDIC_LOOKUP_LIMIT: '500' },
+    env: { ...process.env, MEDIC_LOOKUP_LIMIT: '500', MEDTHRU_DB: DB_PATH },
   });
 
   try {

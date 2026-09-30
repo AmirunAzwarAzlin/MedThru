@@ -2,7 +2,9 @@ const { DatabaseSync } = require('node:sqlite');
 const path = require('node:path');
 const { hashCardToken, previewOf } = require('./tokens');
 
-const db = new DatabaseSync(path.join(__dirname, 'medthru.db'));
+// MEDTHRU_DB lets the test suite point the server at a throwaway file, so a
+// test run can never touch the real medthru.db.
+const db = new DatabaseSync(process.env.MEDTHRU_DB || path.join(__dirname, 'medthru.db'));
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS patients (
