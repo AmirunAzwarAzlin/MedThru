@@ -23,6 +23,17 @@ class _ResponderHomeScreenState extends State<ResponderHomeScreen> {
   void initState() {
     super.initState();
     _load();
+    MedThruApi.instance.addListener(_onApiChange);
+  }
+
+  @override
+  void dispose() {
+    MedThruApi.instance.removeListener(_onApiChange);
+    super.dispose();
+  }
+
+  void _onApiChange() {
+    if (mounted) setState(_load);
   }
 
   void _load() {
@@ -35,6 +46,7 @@ class _ResponderHomeScreenState extends State<ResponderHomeScreen> {
     return RefreshIndicator(
       onRefresh: () async => setState(_load),
       child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
           _ScanPrompt(name: widget.doctorName),
@@ -151,6 +163,29 @@ class _RecentLookupsPanel extends StatelessWidget {
   }
 }
 
+/// Renders a SQLite `datetime('now')` timestamp (UTC, no timezone suffix —
+/// e.g. "2026-10-03 08:57:40") as a short relative string like "2m ago" or
+/// "3h ago", falling back to a short date for anything a week or older.
+/// Parses explicitly as UTC so the result is correct regardless of the
+/// device's local timezone.
+String _timeAgo(String? sqliteUtcTimestamp) {
+  if (sqliteUtcTimestamp == null) return '';
+  final iso = '${sqliteUtcTimestamp.replaceFirst(' ', 'T')}Z';
+  final then = DateTime.tryParse(iso);
+  if (then == null) return '';
+  final diff = DateTime.now().toUtc().difference(then);
+  if (diff.inSeconds < 5) return 'just now';
+  if (diff.inMinutes < 1) return '${diff.inSeconds}s ago';
+  if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+  if (diff.inDays < 1) return '${diff.inHours}h ago';
+  if (diff.inDays < 7) return '${diff.inDays}d ago';
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  return '${months[then.month - 1]} ${then.day}';
+}
+
 class _LookupTile extends StatelessWidget {
   const _LookupTile({required this.row});
   final Map<String, dynamic> row;
@@ -159,6 +194,7 @@ class _LookupTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final name = row['full_name'] as String? ?? 'Patient';
+    final lastViewed = _timeAgo(row['last_viewed'] as String?);
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: () => Navigator.push(
@@ -204,6 +240,17 @@ class _LookupTile extends StatelessWidget {
                 ),
               ),
             ),
+            if (lastViewed.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Text(
+                lastViewed,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            const SizedBox(width: 4),
             Icon(Icons.chevron_right_rounded, size: 18, color: scheme.onSurfaceVariant),
           ],
         ),
