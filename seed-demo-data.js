@@ -65,6 +65,7 @@ const insertDoctor = db.prepare(
    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 );
 const promoteAdmin = db.prepare(`UPDATE doctors SET is_admin = 1 WHERE id = ?`);
+const setRole = db.prepare(`UPDATE doctors SET role = ? WHERE id = ?`);
 
 const doctorIds = [];
 const passwordHash = hashPassword(DEMO_PASSWORD);
@@ -74,6 +75,7 @@ for (const [i, doc] of doctors.entries()) {
   if (existing) {
     doctorIds.push(existing.id);
     if (doc.admin) promoteAdmin.run(existing.id);
+    setRole.run('clinic', existing.id);
     continue;
   }
   const phone = `011-${randInt(2000000, 9999999)}`;
@@ -87,6 +89,7 @@ for (const doc of emergencyResponders) {
   const existing = findDoctorByEmail.get(doc.email);
   if (existing) {
     emsIds.push(existing.id);
+    setRole.run('responder', existing.id);
     continue;
   }
   const phone = `019-${randInt(2000000, 9999999)}`;
