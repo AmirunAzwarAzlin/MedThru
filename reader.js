@@ -41,6 +41,7 @@ nfc.on('reader', reader => {
       console.log('This card has no MedThru token written to it yet.');
       return;
     }
+    await broadcastTap(token);
     await lookupPatientByToken(token);
   });
 

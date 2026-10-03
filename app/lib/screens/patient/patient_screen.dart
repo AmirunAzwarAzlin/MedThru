@@ -67,7 +67,14 @@ class _PatientScreenState extends State<PatientScreen>
   void initState() {
     super.initState();
     _patient = widget.patient;
-    _tabs = TabController(length: 4, vsync: this);
+    // A raw card tap (not the patient's own "me" session) lands straight on
+    // Emergency info — the export button is the first thing a responder or
+    // doctor sees, rather than being buried behind tab navigation.
+    _tabs = TabController(
+      length: 4,
+      vsync: this,
+      initialIndex: widget.cardToken != 'me' ? _tabEmergency : 0,
+    );
     // Rebuild so the floating action button matches the visible tab.
     _tabs.addListener(() {
       if (!_tabs.indexIsChanging) setState(() {});
@@ -1069,6 +1076,8 @@ class _EmergencyTab extends StatefulWidget {
 
 class _EmergencyTabState extends State<_EmergencyTab> {
   late Future<List<Map<String, dynamic>>> _contacts;
+  late Future<List<Map<String, dynamic>>> _allergies;
+  late Future<List<Map<String, dynamic>>> _conditions;
 
   @override
   void initState() {
@@ -1081,6 +1090,15 @@ class _EmergencyTabState extends State<_EmergencyTab> {
       widget.patientId,
     );
     _contacts.ignore();
+    // `patient['allergies']` is a legacy flat field set once at registration
+    // — it never reflects what's actually been logged via Health Records, so
+    // the big "Allergies" stat below reads the real, editable list instead.
+    _allergies = MedThruApi.instance.getAllergiesForPatient(widget.patientId);
+    _allergies.ignore();
+    // Same split as allergies: `patient['conditions']` is a legacy flat
+    // field, never updated by the real, editable medical history list.
+    _conditions = MedThruApi.instance.getMedicalHistoryForPatient(widget.patientId);
+    _conditions.ignore();
   }
 
   Future<void> _manageContacts() async {
@@ -1129,34 +1147,66 @@ class _EmergencyTabState extends State<_EmergencyTab> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _BigStat(
-                label: 'Allergies',
-                value: widget.val('allergies'),
-                color: MedThruTheme.iconRed,
-                tile: MedThruTheme.tileRed,
+              child: FutureBuilder<List<Map<String, dynamic>>>(
+                future: _allergies,
+                builder: (context, snap) {
+                  final allergies = snap.data;
+                  final display = snap.connectionState != ConnectionState.done
+                      ? '…'
+                      : (allergies == null || allergies.isEmpty)
+                          ? 'None known'
+                          : allergies.map((a) => a['allergen'] as String).join(', ');
+                  return _BigStat(
+                    label: 'Allergies',
+                    value: display,
+                    color: MedThruTheme.iconRed,
+                    tile: MedThruTheme.tileRed,
+                  );
+                },
               ),
             ),
           ],
         ),
         const SizedBox(height: 14),
-        FieldCard(
-          label: 'Conditions',
-          value: widget.val('conditions'),
-          icon: Icons.monitor_heart_outlined,
+        FutureBuilder<List<Map<String, dynamic>>>(
+          future: _conditions,
+          builder: (context, snap) {
+            final history = snap.data;
+            final display = snap.connectionState != ConnectionState.done
+                ? '…'
+                : (history == null || history.isEmpty)
+                    ? 'None known'
+                    : (() {
+                        final active = history
+                            .where((c) => c['status'] == 'active')
+                            .map((c) => c['condition_name'] as String)
+                            .toList();
+                        return active.isEmpty
+                            ? 'None active'
+                            : active.join(', ');
+                      })();
+            return FieldCard(
+              label: 'Conditions',
+              value: display,
+              icon: Icons.monitor_heart_outlined,
+            );
+          },
         ),
         const SizedBox(height: 18),
         Row(
           children: [
-            Text(
-              'EMERGENCY CONTACTS',
-              style: TextStyle(
-                fontSize: 12,
-                letterSpacing: 1,
-                fontWeight: FontWeight.w700,
-                color: scheme.onSurfaceVariant,
+            Expanded(
+              child: Text(
+                'EMERGENCY CONTACTS',
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  letterSpacing: 1,
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurfaceVariant,
+                ),
               ),
             ),
-            const Spacer(),
             TextButton.icon(
               onPressed: _manageContacts,
               icon: const Icon(Icons.edit_outlined, size: 16),

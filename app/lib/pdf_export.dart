@@ -21,11 +21,13 @@ Future<void> exportPatientSummary(BuildContext context, Map<String, dynamic> pat
     final patientId = patient['id'] as int;
     final allergies = await MedThruApi.instance.getAllergiesForPatient(patientId);
     final medications = await MedThruApi.instance.getMedicationsForPatient(patientId);
+    final contacts = await MedThruApi.instance.getEmergencyContactsForPatient(patientId);
 
     final bytes = await _buildSummaryPdf(
       patient: patient,
       allergies: allergies,
       medications: medications,
+      contacts: contacts,
     );
     final saved = await _saveAndOpen(bytes, patient['full_name'] as String? ?? 'patient');
 
@@ -200,6 +202,7 @@ Future<Uint8List> _buildSummaryPdf({
   required Map<String, dynamic> patient,
   required List<Map<String, dynamic>> allergies,
   required List<Map<String, dynamic>> medications,
+  required List<Map<String, dynamic>> contacts,
 }) async {
   final doc = pw.Document();
   final generated = DateTime.now();
@@ -237,8 +240,26 @@ Future<Uint8List> _buildSummaryPdf({
           _row('Date of birth', val('date_of_birth')),
           _row('Blood type', val('blood_type')),
           _row('Primary doctor', val('primary_doctor')),
-          _row('Emergency contact',
-              '${val('emergency_contact_name')} - ${val('emergency_contact_phone')}'),
+          pw.SizedBox(height: 16),
+          _heading('EMERGENCY CONTACTS'),
+          pw.SizedBox(height: 4),
+          if (contacts.isEmpty)
+            pw.Text('None recorded.', style: const pw.TextStyle(color: PdfColors.grey700))
+          else
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                for (final c in contacts)
+                  pw.Bullet(
+                    text: [
+                      c['name'],
+                      if (c['relationship'] != null) '(${c['relationship']})',
+                      '-',
+                      c['phone'],
+                    ].join(' '),
+                  ),
+              ],
+            ),
           pw.SizedBox(height: 16),
           _heading('ALLERGIES & INTOLERANCES'),
           pw.SizedBox(height: 4),

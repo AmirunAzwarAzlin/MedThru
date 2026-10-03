@@ -43,6 +43,13 @@ void main() {
     ));
     await tester.pump(const Duration(milliseconds: 100));
 
+    // A raw card token now lands on the Emergency tab by default, which
+    // scrolls the (isScrollable) tab bar to center it — pushing "Home" off
+    // the visible strip at this width, so bring it into view before tapping.
+    await tester.ensureVisible(find.text('Home'));
+    await tester.tap(find.text('Home'));
+    await tester.pumpAndSettle();
+
     // "Profile" only appears once now: the tab itself, not a dashboard tile.
     expect(find.text('Profile'), findsOneWidget);
 

@@ -22,6 +22,13 @@ final _patient = <String, dynamic>{
 /// and the month calendar — and the calendar's height changes with the month,
 /// so no fixed surface size keeps the tile reliably on screen.
 Future<void> _openHealthRecords(WidgetTester tester) async {
+  // A raw card token now lands on the Emergency tab by default, which
+  // scrolls the (isScrollable) tab bar to center it — pushing "Home" off
+  // the visible strip at this width, so bring it into view before tapping.
+  await tester.ensureVisible(find.text('Home'));
+  await tester.tap(find.text('Home'));
+  await tester.pumpAndSettle();
+
   final tile = find.text('Health Records').first;
   await tester.ensureVisible(tile);
   await tester.pumpAndSettle();

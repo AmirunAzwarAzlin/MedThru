@@ -51,6 +51,14 @@ void main() {
       // The Readings/Notes futures will fail (no server); let them settle.
       await tester.pump(const Duration(milliseconds: 100));
 
+      // A raw card token now lands on the Emergency tab by default, which
+      // scrolls the (isScrollable) tab bar to center it — pushing "Home" off
+      // the visible strip at this width, so bring it into view before
+      // tapping. This golden is specifically of the Home dashboard.
+      await tester.ensureVisible(find.text('Home'));
+      await tester.tap(find.text('Home'));
+      await tester.pumpAndSettle();
+
       await expectLater(
         find.byType(MaterialApp),
         matchesGoldenFile('goldens/dashboard_$name.png'),
