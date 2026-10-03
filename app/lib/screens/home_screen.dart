@@ -10,6 +10,7 @@ import 'doctor/patient_directory_screen.dart';
 import 'doctor/appointment_queue_screen.dart';
 import 'doctor/doctor_dashboard_screen.dart';
 import 'doctor/reports_screen.dart';
+import 'responder/responder_home_screen.dart';
 
 /// Landing page: introduces Med-IC before pushing anyone to sign in,
 /// then offers the actions. Becomes doctor-aware once signed in.
@@ -43,6 +44,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final api = _api;
     final isDoctor = api.isLoggedIn;
+    final isResponder = isDoctor && api.doctorRole == 'responder';
 
     return Scaffold(
       body: CustomScrollView(
@@ -52,38 +54,40 @@ class _HomeScreenState extends State<HomeScreen> {
             title: const _BrandMark(),
             actions: [
               if (isDoctor) ...[
-                IconButton(
-                  tooltip: 'Register patient',
-                  icon: const Icon(Icons.person_add_alt_1_outlined),
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const RegisterPatientScreen()),
+                if (!isResponder) ...[
+                  IconButton(
+                    tooltip: 'Register patient',
+                    icon: const Icon(Icons.person_add_alt_1_outlined),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const RegisterPatientScreen()),
+                    ),
                   ),
-                ),
-                IconButton(
-                  tooltip: 'Requests',
-                  icon: const Icon(Icons.event_note_outlined),
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const AppointmentQueueScreen()),
+                  IconButton(
+                    tooltip: 'Requests',
+                    icon: const Icon(Icons.event_note_outlined),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AppointmentQueueScreen()),
+                    ),
                   ),
-                ),
-                IconButton(
-                  tooltip: 'Patients',
-                  icon: const Icon(Icons.people_outline),
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const PatientDirectoryScreen()),
+                  IconButton(
+                    tooltip: 'Patients',
+                    icon: const Icon(Icons.people_outline),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PatientDirectoryScreen()),
+                    ),
                   ),
-                ),
-                IconButton(
-                  tooltip: 'Reports',
-                  icon: const Icon(Icons.insights_outlined),
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ReportsScreen()),
+                  IconButton(
+                    tooltip: 'Reports',
+                    icon: const Icon(Icons.insights_outlined),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ReportsScreen()),
+                    ),
                   ),
-                ),
+                ],
                 // Account actions tucked into a menu so the bar stays tidy on
                 // phones while still exposing the primary nav as icons.
                 PopupMenuButton<String>(
@@ -116,9 +120,9 @@ class _HomeScreenState extends State<HomeScreen> {
           if (isDoctor)
             SliverFillRemaining(
               hasScrollBody: true,
-              child: DoctorDashboardScreen(
-                doctorName: api.doctorName ?? 'Doctor',
-              ),
+              child: isResponder
+                  ? ResponderHomeScreen(doctorName: api.doctorName ?? 'Responder')
+                  : DoctorDashboardScreen(doctorName: api.doctorName ?? 'Doctor'),
             )
           else
             SliverToBoxAdapter(
