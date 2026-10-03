@@ -935,6 +935,9 @@ async function main() {
       // as `patient`/`cardToken`) twice, and the second patient once.
       await fetch(`${BASE}/patients/token/${cardToken}`, { headers: { Authorization: `Bearer ${responderToken}` } });
       await fetch(`${BASE}/patients/token/${cardToken}`, { headers: { Authorization: `Bearer ${responderToken}` } });
+      // Insert a delay to ensure timestamps differ by at least one second, so
+      // ordering assertions don't flake on same-second reads.
+      await new Promise(r => setTimeout(r, 1100));
       await fetch(`${BASE}/patients/token/${secondToken}`, { headers: { Authorization: `Bearer ${responderToken}` } });
 
       res = await fetch(`${BASE}/doctor/recent-lookups`, { headers: { Authorization: `Bearer ${responderToken}` } });
@@ -944,6 +947,17 @@ async function main() {
       const seenIds = lookups.map((l) => l.patient_id);
       assert(seenIds.includes(patient.id), 'the first patient appears exactly once despite two reads');
       assert(seenIds.includes(secondPatientId), 'the second patient appears');
+
+      // Verify field values: full_name and last_viewed are present and non-empty
+      assert(typeof lookups[0].full_name === 'string' && lookups[0].full_name.length > 0, 'first result has non-empty full_name string');
+      assert(typeof lookups[0].last_viewed === 'string' && lookups[0].last_viewed.length > 0, 'first result has non-empty last_viewed string');
+      assert(typeof lookups[1].full_name === 'string' && lookups[1].full_name.length > 0, 'second result has non-empty full_name string');
+      assert(typeof lookups[1].last_viewed === 'string' && lookups[1].last_viewed.length > 0, 'second result has non-empty last_viewed string');
+
+      // Verify ordering: the second patient (read most recently) sorts before the first
+      const secondPatientIndex = lookups.findIndex(l => l.patient_id === secondPatientId);
+      const firstPatientIndex = lookups.findIndex(l => l.patient_id === patient.id);
+      assert(secondPatientIndex < firstPatientIndex, 'the second patient (read most recently) sorts before the first patient');
 
       // Isolation: a doctor who hasn't looked anyone up sees an empty list,
       // not the responder's reads above.
