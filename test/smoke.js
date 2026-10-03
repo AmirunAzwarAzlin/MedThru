@@ -871,6 +871,34 @@ async function main() {
     });
     assert(res.status === 200, 'an admin doctor can delete a contraindication rule');
 
+    // --- Doctor role: defaults to 'clinic'; EMS-style accounts can be
+    // provisioned directly as 'responder' ---
+    res = await fetch(`${BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+    assert(res.status === 200, 'fetch own profile');
+    const meProfile = await res.json();
+    assert(meProfile.role === 'clinic', 'a freshly registered doctor defaults to the clinic role');
+
+    {
+      const { DatabaseSync } = require('node:sqlite');
+      const { hashPassword } = require('../auth');
+      const roleDb = new DatabaseSync(DB_PATH);
+      const responderPasswordHash = hashPassword('responder-password-123');
+      roleDb.prepare(
+        `INSERT INTO doctors (name, license_number, email, password_hash, role)
+         VALUES (?, ?, ?, ?, ?)`
+      ).run('Test Responder', 'EMS-TEST-001', 'responder@medthru.test', responderPasswordHash, 'responder');
+      roleDb.close();
+
+      res = await fetch(`${BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'responder@medthru.test', password: 'responder-password-123' }),
+      });
+      assert(res.status === 200, 'the responder account logs in');
+      const responderLogin = await res.json();
+      assert(responderLogin.doctor.role === 'responder', 'login response reflects the responder role');
+    }
+
     console.log('\nAll smoke checks passed.');
   } finally {
     proc.kill();

@@ -205,6 +205,7 @@ function doctorProfile(doctor) {
     clinic_id: doctor.clinic_id ?? null,
     created_at: doctor.created_at,
     is_admin: !!doctor.is_admin,
+    role: doctor.role,
   };
 }
 
