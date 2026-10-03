@@ -60,4 +60,25 @@ void main() {
     expect(find.byIcon(Icons.people_outline), findsNothing);
     expect(find.text('Doctor sign in'), findsOneWidget);
   });
+
+  // Regression test: a responder-role doctor must land on the responder home
+  // screen with the clinic-only app-bar shortcuts hidden, not the clinic
+  // dashboard — see home_screen.dart's `isResponder` branch.
+  testWidgets('Responder session shows the responder home screen', (tester) async {
+    await tester.pumpWidget(const MedThruApp(enableTapListening: false, enableNotifications: false));
+
+    MedThruApi.instance.debugSetSession(
+      token: 'fake-token',
+      doctor: {'id': 2, 'name': 'Responder Test', 'email': 'responder@medthru.test', 'role': 'responder'},
+    );
+    await tester.pump();
+
+    // Clinic-only app-bar shortcuts are hidden for a responder.
+    expect(find.byIcon(Icons.people_outline), findsNothing);
+    expect(find.byIcon(Icons.event_note_outlined), findsNothing);
+    // The account menu is still present.
+    expect(find.byIcon(Icons.account_circle_outlined), findsOneWidget);
+    // The responder landing screen itself renders.
+    expect(find.textContaining('Ready to respond'), findsOneWidget);
+  });
 }
