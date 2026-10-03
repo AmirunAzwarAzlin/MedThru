@@ -43,6 +43,10 @@ class MedThruApi extends ChangeNotifier {
   bool get isAdmin => _doctor?['is_admin'] == true;
   String? get doctorName => _doctor?['name'] as String?;
 
+  /// 'clinic' or 'responder' — null when signed out. Drives which landing
+  /// screen `home_screen.dart` shows a signed-in doctor.
+  String? get doctorRole => _doctor?['role'] as String?;
+
   Map<String, dynamic>? get patientSession => _patientSession;
   bool get patientIsLoggedIn => _patientToken != null;
 
@@ -283,6 +287,16 @@ class MedThruApi extends ChangeNotifier {
       throw _errorFrom(res, 'Could not load the dashboard');
     }
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Patients this doctor has recently looked up, newest first, one row per
+  /// patient. Doctor-only — see `GET /api/doctor/recent-lookups`.
+  Future<List<Map<String, dynamic>>> getRecentLookups() async {
+    final res = await http.get(Uri.parse('$_baseUrl/doctor/recent-lookups'), headers: _headers);
+    if (res.statusCode != 200) {
+      throw _errorFrom(res, 'Could not load recent lookups');
+    }
+    return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
   }
 
   /// Practice analytics for the Reports page: appointments by week, top

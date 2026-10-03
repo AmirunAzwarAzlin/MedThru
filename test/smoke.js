@@ -871,6 +871,107 @@ async function main() {
     });
     assert(res.status === 200, 'an admin doctor can delete a contraindication rule');
 
+    // --- Doctor role: defaults to 'clinic'; EMS-style accounts can be
+    // provisioned directly as 'responder' ---
+    res = await fetch(`${BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+    assert(res.status === 200, 'fetch own profile');
+    const meProfile = await res.json();
+    assert(meProfile.role === 'clinic', 'a freshly registered doctor defaults to the clinic role');
+
+    {
+      const { DatabaseSync } = require('node:sqlite');
+      const { hashPassword } = require('../auth');
+      const roleDb = new DatabaseSync(DB_PATH);
+      const responderPasswordHash = hashPassword('responder-password-123');
+      roleDb.prepare(
+        `INSERT INTO doctors (name, license_number, email, password_hash, role)
+         VALUES (?, ?, ?, ?, ?)`
+      ).run('Test Responder', 'EMS-TEST-001', 'responder@medthru.test', responderPasswordHash, 'responder');
+      roleDb.close();
+
+      res = await fetch(`${BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'responder@medthru.test', password: 'responder-password-123' }),
+      });
+      assert(res.status === 200, 'the responder account logs in');
+      const responderLogin = await res.json();
+      assert(responderLogin.doctor.role === 'responder', 'login response reflects the responder role');
+    }
+
+    // --- GET /api/doctor/recent-lookups: deduplicated, isolated per doctor ---
+    {
+      const { DatabaseSync } = require('node:sqlite');
+      const { hashPassword } = require('../auth');
+      const { generateCardToken, hashCardToken, previewOf } = require('../tokens');
+
+      const fixtureDb = new DatabaseSync(DB_PATH);
+      const sharedHash = hashPassword('lookup-test-password');
+      const lookupResponderId = Number(fixtureDb.prepare(
+        `INSERT INTO doctors (name, license_number, email, password_hash, role) VALUES (?, ?, ?, ?, ?)`
+      ).run('Lookup Test Responder', 'EMS-TEST-LOOKUP', 'lookup-responder@medthru.test', sharedHash, 'responder').lastInsertRowid);
+      fixtureDb.prepare(
+        `INSERT INTO doctors (name, license_number, email, password_hash, role) VALUES (?, ?, ?, ?, ?)`
+      ).run('Lookup Test Bystander', 'TEST-BYSTANDER-001', 'bystander@medthru.test', sharedHash, 'clinic');
+      const secondPatientId = Number(fixtureDb.prepare(
+        `INSERT INTO patients (full_name) VALUES (?)`
+      ).run('Second Lookup Patient').lastInsertRowid);
+      const secondToken = generateCardToken();
+      fixtureDb.prepare(
+        `INSERT INTO cards (patient_id, token_hash, preview) VALUES (?, ?, ?)`
+      ).run(secondPatientId, hashCardToken(secondToken), previewOf(secondToken));
+      fixtureDb.close();
+      void lookupResponderId; // inserted for realism; not referenced further
+
+      res = await fetch(`${BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'lookup-responder@medthru.test', password: 'lookup-test-password' }),
+      });
+      assert(res.status === 200, 'the test responder logs in');
+      const responderToken = (await res.json()).token;
+
+      // Read the first patient (registered earlier in this file, in scope
+      // as `patient`/`cardToken`) twice, and the second patient once.
+      await fetch(`${BASE}/patients/token/${cardToken}`, { headers: { Authorization: `Bearer ${responderToken}` } });
+      await fetch(`${BASE}/patients/token/${cardToken}`, { headers: { Authorization: `Bearer ${responderToken}` } });
+      // Insert a delay to ensure timestamps differ by at least one second, so
+      // ordering assertions don't flake on same-second reads.
+      await new Promise(r => setTimeout(r, 1100));
+      await fetch(`${BASE}/patients/token/${secondToken}`, { headers: { Authorization: `Bearer ${responderToken}` } });
+
+      res = await fetch(`${BASE}/doctor/recent-lookups`, { headers: { Authorization: `Bearer ${responderToken}` } });
+      assert(res.status === 200, 'a responder can fetch their recent lookups');
+      const lookups = await res.json();
+      assert(lookups.length === 2, 'repeated reads of the same patient collapse to one row');
+      const seenIds = lookups.map((l) => l.patient_id);
+      assert(seenIds.includes(patient.id), 'the first patient appears exactly once despite two reads');
+      assert(seenIds.includes(secondPatientId), 'the second patient appears');
+
+      // Verify field values: full_name and last_viewed are present and non-empty
+      assert(typeof lookups[0].full_name === 'string' && lookups[0].full_name.length > 0, 'first result has non-empty full_name string');
+      assert(typeof lookups[0].last_viewed === 'string' && lookups[0].last_viewed.length > 0, 'first result has non-empty last_viewed string');
+      assert(typeof lookups[1].full_name === 'string' && lookups[1].full_name.length > 0, 'second result has non-empty full_name string');
+      assert(typeof lookups[1].last_viewed === 'string' && lookups[1].last_viewed.length > 0, 'second result has non-empty last_viewed string');
+
+      // Verify ordering: the second patient (read most recently) sorts before the first
+      const secondPatientIndex = lookups.findIndex(l => l.patient_id === secondPatientId);
+      const firstPatientIndex = lookups.findIndex(l => l.patient_id === patient.id);
+      assert(secondPatientIndex < firstPatientIndex, 'the second patient (read most recently) sorts before the first patient');
+
+      // Isolation: a doctor who hasn't looked anyone up sees an empty list,
+      // not the responder's reads above.
+      res = await fetch(`${BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'bystander@medthru.test', password: 'lookup-test-password' }),
+      });
+      const bystanderToken = (await res.json()).token;
+      res = await fetch(`${BASE}/doctor/recent-lookups`, { headers: { Authorization: `Bearer ${bystanderToken}` } });
+      const bystanderLookups = await res.json();
+      assert(bystanderLookups.length === 0, "a doctor who hasn't looked anyone up sees an empty list");
+    }
+
     console.log('\nAll smoke checks passed.');
   } finally {
     proc.kill();

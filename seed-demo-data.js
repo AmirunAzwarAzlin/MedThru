@@ -61,10 +61,11 @@ const emergencyResponders = [
 
 const findDoctorByEmail = db.prepare(`SELECT id FROM doctors WHERE email = ?`);
 const insertDoctor = db.prepare(
-  `INSERT INTO doctors (name, license_number, email, password_hash, phone, is_admin, clinic_id)
-   VALUES (?, ?, ?, ?, ?, ?, ?)`
+  `INSERT INTO doctors (name, license_number, email, password_hash, phone, is_admin, clinic_id, role)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 );
 const promoteAdmin = db.prepare(`UPDATE doctors SET is_admin = 1 WHERE id = ?`);
+const setRole = db.prepare(`UPDATE doctors SET role = ? WHERE id = ?`);
 
 const doctorIds = [];
 const passwordHash = hashPassword(DEMO_PASSWORD);
@@ -74,11 +75,12 @@ for (const [i, doc] of doctors.entries()) {
   if (existing) {
     doctorIds.push(existing.id);
     if (doc.admin) promoteAdmin.run(existing.id);
+    setRole.run('clinic', existing.id);
     continue;
   }
   const phone = `011-${randInt(2000000, 9999999)}`;
   const clinicId = CLINIC_IDS[i % CLINIC_IDS.length];
-  const result = insertDoctor.run(doc.name, doc.license, doc.email, passwordHash, phone, doc.admin ? 1 : 0, clinicId);
+  const result = insertDoctor.run(doc.name, doc.license, doc.email, passwordHash, phone, doc.admin ? 1 : 0, clinicId, 'clinic');
   doctorIds.push(Number(result.lastInsertRowid));
 }
 
@@ -87,10 +89,11 @@ for (const doc of emergencyResponders) {
   const existing = findDoctorByEmail.get(doc.email);
   if (existing) {
     emsIds.push(existing.id);
+    setRole.run('responder', existing.id);
     continue;
   }
   const phone = `019-${randInt(2000000, 9999999)}`;
-  const result = insertDoctor.run(doc.name, doc.license, doc.email, passwordHash, phone, 0, null);
+  const result = insertDoctor.run(doc.name, doc.license, doc.email, passwordHash, phone, 0, null, 'responder');
   emsIds.push(Number(result.lastInsertRowid));
 }
 

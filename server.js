@@ -205,6 +205,7 @@ function doctorProfile(doctor) {
     clinic_id: doctor.clinic_id ?? null,
     created_at: doctor.created_at,
     is_admin: !!doctor.is_admin,
+    role: doctor.role,
   };
 }
 
@@ -1798,6 +1799,26 @@ app.get('/api/doctor/reports', requireDoctor, (req, res) => {
     topConditions,
     statusBreakdown,
   });
+});
+
+/// Patients this doctor has recently looked up (by card tap or otherwise),
+/// newest first — reuses the `'read'` rows `GET /api/patients/token/:token`
+/// already writes to `audit_log` on every lookup, so no new logging is
+/// needed. Grouped by patient: a tap followed by a pull-to-refresh on the
+/// same visit must not show that patient twice. Available to any doctor
+/// account, not just responders — this is just its first real consumer.
+app.get('/api/doctor/recent-lookups', requireDoctor, (req, res) => {
+  const rows = db.prepare(`
+    SELECT patient_id, patients.full_name,
+           MAX(audit_log.timestamp) AS last_viewed
+    FROM audit_log
+    JOIN patients ON patients.id = audit_log.patient_id
+    WHERE audit_log.doctor_id = ? AND audit_log.action = 'read'
+    GROUP BY patient_id
+    ORDER BY last_viewed DESC
+    LIMIT 20
+  `).all(req.doctor.id);
+  res.json(rows);
 });
 
 /// Confirm, reject, cancel or complete a booking. Doctors only — this is the

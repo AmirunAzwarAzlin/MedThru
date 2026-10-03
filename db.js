@@ -363,6 +363,13 @@ function appointmentColumns() {
   }
 }
 
+// --- Migration: doctor role (clinic vs. emergency responder) ---
+{
+  if (!doctorColumns().includes('role')) {
+    db.exec(`ALTER TABLE doctors ADD COLUMN role TEXT NOT NULL DEFAULT 'clinic'`);
+  }
+}
+
 // --- Migration: appointment rescheduling ---
 //
 // doctor_id is nullable so existing appointments (booked before a doctor was
